@@ -12,5 +12,6 @@ require('./window.test');
 require('./shellOpen.test');
 require('./notification.test');
 require('./process.test');
+require('./dialog.test');
 
 module.exports = require('../harness').tests;

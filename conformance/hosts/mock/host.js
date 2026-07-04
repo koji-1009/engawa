@@ -49,6 +49,7 @@ function buildHandlers(ctx) {
 
   const shellOpenRecorded = [];
   const notificationsRecorded = [];
+  const dialog = { next: null };
 
   // process (spec/commands/process.md) — pull streams over child_process
   const procs = new Map();
@@ -250,7 +251,22 @@ function buildHandlers(ctx) {
       st.proc.kill('SIGTERM');
       return null;
     },
+
+    // dialog (spec/commands/dialog.md) — preprogrammed responses under conformance
+    'dialog.open': async () => takeDialog({ canceled: true, paths: [] }),
+    'dialog.save': async () => takeDialog({ canceled: true, path: null }),
+    'dialog.message': async (a) => {
+      if (!a || typeof a.message !== 'string') throw err('EINVAL', 'message required');
+      return takeDialog({ button: 0 });
+    },
+    'dialog.__setResponse': async (a) => { dialog.next = a; return null; },
   };
+
+  function takeDialog(fallback) {
+    const r = dialog.next === null ? fallback : dialog.next;
+    dialog.next = null;
+    return r;
+  }
 }
 
 function err(code, message) {
