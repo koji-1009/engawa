@@ -86,6 +86,42 @@ function checkStorageWipe() {
   });
 }
 
+// §6/§7: spawn a host that starts on about:blank and report its injection state (dead __shell,
+// no engawa). Navigating the main suite host away from app:// would break its control channel,
+// so use a dedicated host.
+function checkNonAppInjection() {
+  return new Promise((resolve) => {
+    const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-nonapp-'));
+    fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
+    const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-nonappdata-'));
+    const c = spawn(HOST_BIN, [], {
+      env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
+             ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_START_URL: 'about:blank' },
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let done = false, b = '';
+    const finish = (r) => {
+      if (done) return; done = true;
+      try { c.kill('SIGKILL'); } catch { /* ignore */ }
+      try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
+      resolve(r);
+    };
+    c.stdout.on('data', (d) => {
+      b += d.toString('utf8');
+      let i;
+      while ((i = b.indexOf('\n')) >= 0) {
+        const line = b.slice(0, i); b = b.slice(i + 1);
+        if (!line.trim()) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.ctl === 'ready') { try { c.stdin.write(JSON.stringify({ ctl: 'nonAppCheck', reqId: 1 }) + '\n'); } catch { /* gone */ } }
+        else if (m.ctl === 'result') finish(m.value);
+      }
+    });
+    setTimeout(() => finish({ timeout: true }), 8000);
+  });
+}
+
 function connectMacosHost() {
   if (!fs.existsSync(HOST_BIN)) {
     throw new Error(`macOS host not built: ${HOST_BIN} — run \`swift build\` in hosts/macos (or \`make conformance\`)`);
@@ -207,6 +243,8 @@ function connectMacosHost() {
     ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
     // §6 injection matrix — reports whether the app:// iframe received __shell.
     frameCheck: () => request({ ctl: 'frameCheck' }),
+    // §6/§7 — injection state on a non-app (about:blank) document, via a dedicated host.
+    checkNonAppInjection: () => checkNonAppInjection(),
     // §9 engine floor — spawns a throwaway host with a faked engine version.
     checkEngineFloor: (v) => checkEngineFloor(v),
     // §10 boot-after-storage-wipe — spawns a host that wipes WebView storage at boot.

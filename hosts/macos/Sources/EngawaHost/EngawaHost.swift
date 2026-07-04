@@ -46,6 +46,7 @@ final class EngawaHost: NSObject {
     let autotest: Bool
     private let autotestUpdate: String   // ENGAWA_AUTOTEST_UPDATE JSON, or "null"
     private let wipeStorage: Bool        // §10: wipe WebView storage at boot, then boot anyway
+    private let startURL: URL            // usually app://app/index.html; overridable for §6 tests
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -105,6 +106,7 @@ final class EngawaHost: NSObject {
         self.autotest = env["ENGAWA_AUTOTEST"] == "1"
         self.autotestUpdate = env["ENGAWA_AUTOTEST_UPDATE"] ?? "null"
         self.wipeStorage = env["ENGAWA_WIPE_STORAGE"] == "1"
+        self.startURL = URL(string: env["ENGAWA_START_URL"] ?? "app://app/index.html") ?? URL(string: "app://app/index.html")!
         super.init()
     }
 
@@ -156,10 +158,9 @@ final class EngawaHost: NSObject {
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
 
         let ucc = WKUserContentController()
+        // One document-start, main-frame-only script: bootstrap that runs shell.js ONLY on
+        // app:// top-level documents (§6). Non-app origins get a dead __shell and no shell.js.
         ucc.addUserScript(WKUserScript(source: bootstrapScript(),
-                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        // shell.js — identical bytes across hosts.
-        ucc.addUserScript(WKUserScript(source: shellJS,
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         ucc.add(self, name: "engawa")
         if mode == "conformance" { ucc.add(self, name: "engawaCtl") }
@@ -185,7 +186,7 @@ final class EngawaHost: NSObject {
         }
         // §10: WebView-managed storage is cache. Wiping it must not stop the app from booting —
         // durable data lives in fs/sqlite, not IndexedDB/localStorage/caches.
-        let start = URLRequest(url: URL(string: "app://app/index.html")!)
+        let start = URLRequest(url: startURL)
         if wipeStorage {
             WKWebsiteDataStore.default().removeData(
                 ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -216,25 +217,29 @@ final class EngawaHost: NSObject {
         window = w
     }
 
-    // Bootstrap: define __shell before shell.js. Real primitives on app:// top-level
-    // documents; a dead __shell (postMessage no-ops) on any other origin (contract §7).
+    // Bootstrap (§1, §6, §7): on a top-level app:// document, define the real __shell and then
+    // run shell.js (identical bytes, embedded here) so the app gets `engawa`. On any other origin
+    // (http(s), about:blank) define a DEAD __shell (postMessage no-ops) and do NOT run shell.js —
+    // no `engawa`, no bridge to commands.
     private func bootstrapScript() -> String {
         let caps = JSON.string(capabilities) ?? "[]"
         let cv = Self.contractVersion
         let autotestJS = autotest ? "window.__engawaAutotest = { update: \(autotestUpdate) };" : ""
         return """
         (function(){
-          if (location.protocol === 'app:') {
-            window.__shell = {
-              contractVersion: "\(cv)",
-              platform: "macos",
-              capabilities: \(caps),
-              postMessage: function(s){ window.webkit.messageHandlers.engawa.postMessage(s); }
-            };
-            \(autotestJS)
-          } else {
+          if (location.protocol !== 'app:') {
             window.__shell = { contractVersion: "\(cv)", platform: "macos", capabilities: [], postMessage: function(){} };
+            return;   // §6: no shell.js on non-app documents
           }
+          window.__shell = {
+            contractVersion: "\(cv)",
+            platform: "macos",
+            capabilities: \(caps),
+            postMessage: function(s){ window.webkit.messageHandlers.engawa.postMessage(s); }
+          };
+          \(autotestJS)
+          // shell.js — identical bytes across hosts; runs only on app:// (reached only here).
+          \(shellJS)
         })();
         """
     }
@@ -359,6 +364,9 @@ final class EngawaHost: NSObject {
                 case "frameCheck":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     Task { @MainActor [weak self] in self?.runFrameCheck(reqId: reqId) }
+                case "nonAppCheck":
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    Task { @MainActor [weak self] in self?.runNonAppCheck(reqId: reqId) }
                 case "subscribe":
                     if let topic = ctl["topic"] as? String {
                         Task { @MainActor [weak self] in self?.runSubscribe(topic: topic) }
@@ -422,6 +430,22 @@ final class EngawaHost: NSObject {
           engawa.on(\(topicLit), function(payload){
             window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'event', topic:\(topicLit), payload:(payload===undefined?null:payload)});
           });
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // §6/§7: on a non-app document, report the injection state — a dead __shell (no-op
+    // postMessage, empty capabilities) and no `engawa`/shell.js.
+    private func runNonAppCheck(reqId: Int) {
+        let js = """
+        (function(){
+          window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:{
+            protocol: location.protocol,
+            hasShell: (typeof window.__shell !== 'undefined'),
+            shellDead: (typeof window.__shell !== 'undefined' && !!window.__shell.capabilities && window.__shell.capabilities.length === 0),
+            hasEngawa: (typeof window.engawa !== 'undefined')
+          }});
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)

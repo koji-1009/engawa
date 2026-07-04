@@ -18,4 +18,12 @@
     assert(fc.iframeHadShell === false, 'the iframe did not receive __shell (§6: top-level app:// only)');
     assert(fc.topHasShell === true, 'the top-level app:// document did receive __shell');
   });
+
+  test('§6/§7 a non-app (about:blank) document gets a dead __shell and no engawa/shell.js', async function (engawa) {
+    if (!engawa.checkNonAppInjection) return;   // requires a real renderer
+    var r = await engawa.checkNonAppInjection();
+    assert(r.hasEngawa === false, 'no engawa/shell.js on a non-app document (§6)');
+    assert(r.hasShell === true, 'a __shell stub is present');
+    assert(r.shellDead === true, 'the __shell is dead — no-op postMessage, empty capabilities (§7)');
+  });
 })();
