@@ -45,6 +45,7 @@ final class EngawaHost: NSObject {
         router = Router(emitter: emitter)
         router.register(EchoAdapter())
         router.register(PathAdapter(dirs: dirs))
+        router.register(FsAdapter())
         capabilities = router.namespaces
     }
 

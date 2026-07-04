@@ -19,5 +19,9 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 | `ENOTSUP` | The command's namespace is not in `capabilities`. shell.js rejects locally, without a host round-trip (contract §1.1). |
 | `ENOSYS` | The namespace is served but has no such command. |
 | `EIO` | An underlying OS operation failed (create, read, write) for a reason with no more specific code. |
+| `EEXIST` | The target already exists and the operation requires it not to (`fs.mkdir` non-recursive). |
+| `EISDIR` | The target is a directory where a file was required (`fs.readTextFile`). |
+| `ENOTDIR` | The target is not a directory where one was required (`fs.readDir`). |
+| `ENOTEMPTY` | A directory is not empty and the operation needs it to be (`fs.remove` without `recursive`). |
 
 _The registry is seeded with the two codes the contract already names. Command namespaces add their codes here in the same commit as their spec section and conformance test (bootstrap stage 4)._

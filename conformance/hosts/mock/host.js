@@ -27,7 +27,70 @@ function defaultHandlers() {
     'path.appCache': async () => ensure(path.join(dataRoot, 'cache')),
     'path.home': async () => os.homedir(),
     'path.temp': async () => os.tmpdir(),
+
+    // fs (spec/commands/fs.md) — text only; mirrors the macOS adapter's semantics/codes.
+    'fs.readTextFile': async (a) => {
+      const p = reqPath(a);
+      let st;
+      try { st = fs.statSync(p); } catch { throw err('ENOENT', 'no such file: ' + p); }
+      if (st.isDirectory()) throw err('EISDIR', 'is a directory: ' + p);
+      try { return fs.readFileSync(p, 'utf8'); } catch (e) { throw err('EIO', e.message); }
+    },
+    'fs.writeTextFile': async (a) => {
+      const p = reqPath(a);
+      if (!a || typeof a.contents !== 'string') throw err('EINVAL', 'contents required');
+      const parent = path.dirname(p);
+      let pst;
+      try { pst = fs.statSync(parent); } catch { throw err('ENOENT', 'parent directory does not exist: ' + parent); }
+      if (!pst.isDirectory()) throw err('ENOENT', 'parent directory does not exist: ' + parent);
+      const tmp = p + '.engawa-tmp';
+      try { fs.writeFileSync(tmp, a.contents, 'utf8'); fs.renameSync(tmp, p); return null; }
+      catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw err('EIO', e.message); }
+    },
+    'fs.exists': async (a) => fs.existsSync(reqPath(a)),
+    'fs.mkdir': async (a) => {
+      const p = reqPath(a);
+      const recursive = !!(a && a.recursive);
+      if (fs.existsSync(p)) { if (recursive) return null; throw err('EEXIST', 'already exists: ' + p); }
+      try { fs.mkdirSync(p, { recursive }); return null; } catch (e) { throw err('EIO', e.message); }
+    },
+    'fs.remove': async (a) => {
+      const p = reqPath(a);
+      const recursive = !!(a && a.recursive);
+      let st;
+      try { st = fs.lstatSync(p); } catch { throw err('ENOENT', 'no such path: ' + p); }
+      if (st.isDirectory() && !recursive && fs.readdirSync(p).length) throw err('ENOTEMPTY', 'directory not empty: ' + p);
+      try { fs.rmSync(p, { recursive }); return null; } catch (e) { throw err('EIO', e.message); }
+    },
+    'fs.readDir': async (a) => {
+      const p = reqPath(a);
+      let st;
+      try { st = fs.statSync(p); } catch { throw err('ENOENT', 'no such path: ' + p); }
+      if (!st.isDirectory()) throw err('ENOTDIR', 'not a directory: ' + p);
+      return fs.readdirSync(p).map((name) => {
+        let isDirectory = false;
+        try { isDirectory = fs.statSync(path.join(p, name)).isDirectory(); } catch { /* raced away */ }
+        return { name, isDirectory };
+      });
+    },
+    'fs.stat': async (a) => {
+      const p = reqPath(a);
+      let st;
+      try { st = fs.statSync(p); } catch { throw err('ENOENT', 'no such path: ' + p); }
+      return { type: st.isDirectory() ? 'directory' : 'file', size: st.size, modified: st.mtimeMs };
+    },
   };
+}
+
+function err(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  return e;
+}
+
+function reqPath(a) {
+  if (!a || typeof a.path !== 'string' || a.path.length === 0) throw err('EINVAL', 'path required');
+  return a.path;
 }
 
 // Build one runtime instance backed by in-process handlers.
