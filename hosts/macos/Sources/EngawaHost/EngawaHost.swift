@@ -7,6 +7,10 @@ import EngawaKit
 // injects __shell + shell.js at document start (contract §1, §6), and routes every
 // command through the adapter registry (§3). Built-in namespaces are adapters; there
 // is no privileged dispatch path. The only registered adapter so far is `echo`.
+//
+// Main-actor isolated: it drives WebKit (main-thread only) and owns the outbound queue.
+// Adapters run off-actor (their handle is nonisolated async); results hop back here.
+@MainActor
 final class EngawaHost: NSObject {
     static let contractVersion = "1.0"
     static let hostVersion = "macos-host-0.1"
@@ -48,8 +52,9 @@ final class EngawaHost: NSObject {
     // Register the in-tree adapters and derive capabilities from them (§3). Built-ins go
     // here alongside any app adapters; the router treats them identically.
     private func registerAdapters() {
+        // The emitter may be called from an adapter's background thread; hop to the main actor.
         let emitter = HostEmitter { [weak self] topic, payload in
-            self?.emitEvent(topic: topic, payload: payload)
+            Task { @MainActor in self?.emitEvent(topic: topic, payload: payload) }
         }
         router = Router(emitter: emitter)
         router.register(EchoAdapter())
@@ -136,7 +141,8 @@ final class EngawaHost: NSObject {
         outbound.append(frame)
         if flushScheduled { return }
         flushScheduled = true
-        DispatchQueue.main.async { [weak self] in self?.flush() }
+        // One eval per main-loop tick: schedule flush on the next runloop iteration.
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.flush() } }
     }
 
     private func flush() {
@@ -165,14 +171,16 @@ final class EngawaHost: NSObject {
             return
         }
 
+        // Task inherits the main actor; adapter.handle is nonisolated async, so it runs
+        // off-actor and the result resumes here on main to enqueue.
         Task {
             do {
                 let value = try await adapter.handle(command, args)
-                await MainActor.run { self.enqueue(self.okFrame(id, value)) }
+                enqueue(okFrame(id, value))
             } catch let e as AdapterError {
-                await MainActor.run { self.enqueue(self.errFrame(id, e.code, e.message)) }
+                enqueue(errFrame(id, e.code, e.message))
             } catch {
-                await MainActor.run { self.enqueue(self.errFrame(id, "EUNKNOWN", "\(error)")) }
+                enqueue(errFrame(id, "EUNKNOWN", "\(error)"))
             }
         }
     }
@@ -192,11 +200,9 @@ final class EngawaHost: NSObject {
         ["t": "res", "id": id, "ok": false, "err": ["code": code, "message": message]]
     }
 
-    // An adapter emitted an event (§2, §2.1). Hop to main and enqueue as an evt frame.
+    // An adapter emitted an event (§2, §2.1). Already on the main actor (see the emitter sink).
     private func emitEvent(topic: String, payload: JSONValue) {
-        DispatchQueue.main.async { [weak self] in
-            self?.enqueue(["t": "evt", "topic": topic, "payload": payload.toFoundation()])
-        }
+        enqueue(["t": "evt", "topic": topic, "payload": payload.toFoundation()])
     }
 
     // MARK: conformance control bridge (mode == "conformance")
@@ -217,17 +223,18 @@ final class EngawaHost: NSObject {
                 case "invoke":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     let cmd = ctl["cmd"] as? String ?? ""
-                    let args = ctl["args"]
-                    DispatchQueue.main.async { [weak self] in self?.runInvoke(reqId: reqId, cmd: cmd, args: args) }
+                    // Serialize args here (Sendable String) rather than capture a non-Sendable Any.
+                    let argsJSON = JSON.string(ctl["args"] ?? NSNull()) ?? "null"
+                    Task { @MainActor [weak self] in self?.runInvoke(reqId: reqId, cmd: cmd, argsJSON: argsJSON) }
                 case "spike":
                     let reqId = ctl["reqId"] as? Int ?? -1
-                    DispatchQueue.main.async { [weak self] in self?.runSpike(reqId: reqId) }
+                    Task { @MainActor [weak self] in self?.runSpike(reqId: reqId) }
                 case "introspect":
                     let reqId = ctl["reqId"] as? Int ?? -1
-                    DispatchQueue.main.async { [weak self] in self?.runIntrospect(reqId: reqId) }
+                    Task { @MainActor [weak self] in self?.runIntrospect(reqId: reqId) }
                 case "subscribe":
                     if let topic = ctl["topic"] as? String {
-                        DispatchQueue.main.async { [weak self] in self?.runSubscribe(topic: topic) }
+                        Task { @MainActor [weak self] in self?.runSubscribe(topic: topic) }
                     }
                 case "quit":
                     exit(0)
@@ -244,9 +251,8 @@ final class EngawaHost: NSObject {
 
     // Drive the real in-page runtime: the Node suite calls this proxy, the page's
     // real shell.js performs the round-trip, the result is posted back via engawaCtl.
-    private func runInvoke(reqId: Int, cmd: String, args: Any?) {
+    private func runInvoke(reqId: Int, cmd: String, argsJSON: String) {
         let cmdLit = JSON.jsStringLiteral(cmd)
-        let argsJSON = JSON.string(args ?? NSNull()) ?? "null"
         let js = """
         (function(){
           try {

@@ -4,7 +4,7 @@ import EngawaKit
 // The `dialog` namespace (spec/commands/dialog.md). Under conformance the host presents no UI
 // and returns a preprogrammed response (dialog.__setResponse); in app mode it drives real
 // AppKit panels on the main actor.
-final class DialogAdapter: Adapter {
+final class DialogAdapter: Adapter, @unchecked Sendable {
     let namespace = "dialog"
     private let conformance: Bool
     private let lock = NSLock()
@@ -32,12 +32,17 @@ final class DialogAdapter: Adapter {
             return await runMessage(obj)
 
         case "__setResponse" where conformance:
-            lock.lock(); nextResponse = args; lock.unlock()
+            setResponse(args)
             return .null
 
         default:
             throw AdapterError("ENOSYS", "unknown command: dialog.\(cmd)")
         }
+    }
+
+    private func setResponse(_ response: JSONValue) {
+        lock.lock(); defer { lock.unlock() }
+        nextResponse = response
     }
 
     private func takeResponse(default fallback: JSONValue) -> JSONValue {

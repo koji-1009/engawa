@@ -5,7 +5,7 @@ import EngawaKit
 // per stream, signals process.readable when a drained buffer goes non-empty, and drains via
 // process.read; process.exit fires only once both streams are drained. 8 MiB per-stream cap
 // applies OS backpressure by pausing pipe reads. Sidecars are allowlisted per §7.2.
-final class ProcessAdapter: Adapter {
+final class ProcessAdapter: Adapter, @unchecked Sendable {
     let namespace = "process"
 
     private let manifest: Manifest?
@@ -89,16 +89,19 @@ final class ProcessAdapter: Adapter {
 
         proc.stdout.handle.readabilityHandler = { [weak self] fh in self?.onData(pid: pid, which: "stdout", fh: fh) }
         proc.stderr.handle.readabilityHandler = { [weak self] fh in self?.onData(pid: pid, which: "stderr", fh: fh) }
+        // Look the process up by pid rather than capturing the non-Sendable Proc.
         process.terminationHandler = { [weak self] p in
-            guard let self = self else { return }
-            self.lock.lock()
-            proc.exited = true
-            proc.exitCode = Int(p.terminationStatus)
-            self.lock.unlock()
-            self.maybeEmitExit(pid: pid)
+            self?.onTermination(pid: pid, status: Int(p.terminationStatus))
         }
 
         return .object(["pid": .number(Double(pid))])
+    }
+
+    private func onTermination(pid: Int, status: Int) {
+        lock.lock()
+        if let proc = procs[pid] { proc.exited = true; proc.exitCode = status }
+        lock.unlock()
+        maybeEmitExit(pid: pid)
     }
 
     // MARK: stream ingest

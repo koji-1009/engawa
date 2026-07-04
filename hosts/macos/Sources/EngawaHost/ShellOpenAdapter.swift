@@ -4,7 +4,7 @@ import EngawaKit
 // The `shellOpen` namespace (spec/commands/shellOpen.md). Under conformance it records
 // requests instead of performing them (the OS side effect is unobservable and unwanted in
 // tests) and exposes them via `shellOpen.__recorded`.
-final class ShellOpenAdapter: Adapter {
+final class ShellOpenAdapter: Adapter, @unchecked Sendable {
     let namespace = "shellOpen"
     private let conformance: Bool
     private let lock = NSLock()
@@ -23,7 +23,7 @@ final class ShellOpenAdapter: Adapter {
             if conformance {
                 record(["action": .string("openExternal"), "url": .string(url)])
             } else if let u = URL(string: url) {
-                NSWorkspace.shared.open(u)
+                await MainActor.run { NSWorkspace.shared.open(u) }
             }
             return .null
 
@@ -32,13 +32,12 @@ final class ShellOpenAdapter: Adapter {
             if conformance {
                 record(["action": .string("revealInFolder"), "path": .string(p)])
             } else {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)])
+                await MainActor.run { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]) }
             }
             return .null
 
         case "__recorded" where conformance:
-            lock.lock(); defer { lock.unlock() }
-            return .array(recorded)
+            return snapshot()
 
         default:
             throw AdapterError("ENOSYS", "unknown command: shellOpen.\(cmd)")
@@ -48,5 +47,10 @@ final class ShellOpenAdapter: Adapter {
     private func record(_ entry: [String: JSONValue]) {
         lock.lock(); defer { lock.unlock() }
         recorded.append(.object(entry))
+    }
+
+    private func snapshot() -> JSONValue {
+        lock.lock(); defer { lock.unlock() }
+        return .array(recorded)
     }
 }

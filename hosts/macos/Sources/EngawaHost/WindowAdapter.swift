@@ -15,34 +15,34 @@ struct WindowAdapter: Adapter {
         switch cmd {
         case "setTitle":
             let title = obj["title"]?.stringValue ?? ""
-            await MainActor.run { controller.setTitle(title) }
+            await controller.setTitle(title)
             return .null
 
         case "getSize":
-            return await MainActor.run { controller.size() }
+            return await controller.size()
 
         case "setSize":
             guard let w = obj["width"]?.numberValue, let h = obj["height"]?.numberValue else {
                 throw AdapterError("EINVAL", "width and height required")
             }
-            await MainActor.run { controller.setSize(width: w, height: h) }
+            await controller.setSize(width: w, height: h)
             return .null
 
         case "setResizable":
             let resizable = obj["resizable"]?.boolValue ?? true
-            await MainActor.run { controller.setResizable(resizable) }
+            await controller.setResizable(resizable)
             return .null
 
         case "minimize":
-            await MainActor.run { controller.minimize() }
+            await controller.minimize()
             return .null
 
         case "maximize":
-            await MainActor.run { controller.maximize() }
+            await controller.maximize()
             return .null
 
         case "close":
-            await MainActor.run { controller.close() }
+            await controller.close()
             return .null
 
         case "respondToClose":
@@ -50,11 +50,11 @@ struct WindowAdapter: Adapter {
                 throw AdapterError("EINVAL", "token required")
             }
             let allow = obj["allow"]?.boolValue ?? false
-            try await MainActor.run { try controller.respondToClose(token: Int(token), allow: allow) }
+            try await controller.respondToClose(token: Int(token), allow: allow)
             return .null
 
         case "requestClose" where conformance:
-            await MainActor.run { _ = controller.beginClose() }
+            _ = await controller.beginClose()
             return .null
 
         default:

@@ -20,7 +20,7 @@ struct AppAdapter: Adapter {
                 "contractVersion": .string(contractVersion),
             ])
         case "quit":
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+            await MainActor.run { NSApp.terminate(nil) }
             return .null
         default:
             throw AdapterError("ENOSYS", "unknown command: app.\(cmd)")

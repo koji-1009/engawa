@@ -3,7 +3,7 @@ import Foundation
 // The typed JSON value that crosses the adapter boundary (contract §3).
 // Numbers are IEEE doubles — the same representation JS uses — so a value that
 // round-trips through an adapter is bit-identical to what the page sent.
-public indirect enum JSONValue {
+public indirect enum JSONValue: Sendable {
     case null
     case bool(Bool)
     case number(Double)

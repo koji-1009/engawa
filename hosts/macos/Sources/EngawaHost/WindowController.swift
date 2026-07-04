@@ -5,8 +5,9 @@ import EngawaKit
 // not close the window; it emits window.closeRequested with a token and waits — the app
 // answers via window.respondToClose(token, allow). No timeout (§4.2).
 //
-// AppKit is main-thread only; the adapter calls every method here inside MainActor.run,
-// and NSWindowDelegate callbacks already arrive on main — so all access is single-threaded.
+// AppKit is main-thread only, so the whole controller is main-actor isolated; the adapter
+// awaits into it and NSWindowDelegate callbacks already arrive on main.
+@MainActor
 final class WindowController: NSObject, NSWindowDelegate {
     private let emitter: EventEmitter
     private weak var window: NSWindow?

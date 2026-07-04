@@ -5,7 +5,7 @@ import EngawaKit
 // Not sandboxed in v1 (§7): paths are used as given.
 struct FsAdapter: Adapter {
     let namespace = "fs"
-    private let fm = FileManager.default
+    private var fm: FileManager { .default }   // computed: keep the struct Sendable
 
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue {
         let obj = args.objectValue ?? [:]

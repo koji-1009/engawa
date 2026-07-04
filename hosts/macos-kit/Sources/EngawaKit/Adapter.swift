@@ -3,7 +3,7 @@ import Foundation
 // The host-side adapter API (contract §3). An adapter serves exactly one namespace
 // over the wire protocol; it never touches IPC. Built-in namespaces (§4) are adapters
 // that ship in-tree — there is no privileged dispatch path.
-public protocol Adapter {
+public protocol Adapter: Sendable {
     var namespace: String { get }
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue
     func attach(_ emitter: EventEmitter)
@@ -15,12 +15,12 @@ public extension Adapter {
 }
 
 // How an adapter emits an event frame (contract §2, §2.1). Signals, not bulk payloads.
-public protocol EventEmitter {
+public protocol EventEmitter: Sendable {
     func emit(_ topic: String, _ payload: JSONValue)
 }
 
 // A command failed with a wire error code (registry: spec/errors.md).
-public struct AdapterError: Error {
+public struct AdapterError: Error, Sendable {
     public let code: String
     public let message: String
     public init(_ code: String, _ message: String) {
@@ -56,8 +56,8 @@ public final class Router {
 
 // Bridges an adapter's emit() back to the host's outbound queue.
 public final class HostEmitter: EventEmitter {
-    private let sink: (String, JSONValue) -> Void
-    public init(_ sink: @escaping (String, JSONValue) -> Void) {
+    private let sink: @Sendable (String, JSONValue) -> Void
+    public init(_ sink: @escaping @Sendable (String, JSONValue) -> Void) {
         self.sink = sink
     }
     public func emit(_ topic: String, _ payload: JSONValue) {
