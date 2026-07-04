@@ -6,8 +6,9 @@ import EngawaUpdate
 // The macOS reference host. Implements the two protocol primitives — receive a
 // string (`engawa` message handler) and evaluate a string (`__shell._deliver`) —
 // injects __shell + shell.js at document start (contract §1, §6), and routes every
-// command through the adapter registry (§3). Built-in namespaces are adapters; there
-// is no privileged dispatch path. The only registered adapter so far is `echo`.
+// command through the adapter registry (§3). Built-in namespaces, the contract-coupled
+// update adapter, and the app's declared adapters all register the same way — there is
+// no privileged dispatch path.
 //
 // Main-actor isolated: it drives WebKit (main-thread only) and owns the outbound queue.
 // Adapters run off-actor (their handle is nonisolated async); results hop back here.
