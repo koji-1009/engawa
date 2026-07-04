@@ -71,8 +71,11 @@
     var token = events[0] && events[0].token;
     assert(typeof token === 'number', 'closeRequested carried a numeric token');
 
+    // §4.2: a slow responder must not time out — the token stays valid after a delay.
+    await delay(400);
+
     // Veto the close so nothing is destroyed mid-suite.
-    assertEqual(await engawa.invoke('window.respondToClose', { token: token, allow: false }), null, 'respondToClose ok');
+    assertEqual(await engawa.invoke('window.respondToClose', { token: token, allow: false }), null, 'respondToClose ok after a slow response');
 
     // The token is single-use: answering again rejects.
     var err = null;
