@@ -146,6 +146,14 @@ function buildHandlers(ctx) {
       return null;
     },
     'shellOpen.__recorded': async () => shellOpenRecorded.slice(),
+
+    // notification (spec/commands/notification.md) — record-only
+    'notification.show': async (a) => {
+      if (!a || typeof a.title !== 'string' || !a.title) throw err('EINVAL', 'title required');
+      notificationsRecorded.push({ title: a.title, body: typeof a.body === 'string' ? a.body : '' });
+      return null;
+    },
+    'notification.__recorded': async () => notificationsRecorded.slice(),
   };
 }
 
