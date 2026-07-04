@@ -27,10 +27,17 @@ function connectMacosHost() {
   // §7.3: the inline <script> must be dead, but the EXTERNAL app: script must load
   // (script-src app:). introspect reports both.
   fs.writeFileSync(path.join(root, 'probe.js'), 'window.__externalRan = true;');
+  // §6: an app:// iframe must NOT receive __shell (top-level app:// only). frame.js runs in
+  // the iframe (proving CSP allows app: scripts in subframes too) and reports to the parent.
+  fs.writeFileSync(path.join(root, 'frame.js'),
+    'window.parent.__iframeLoaded = true; window.parent.__iframeHadShell = (typeof window.__shell !== "undefined");');
+  fs.writeFileSync(path.join(root, 'frame.html'),
+    '<!doctype html><meta charset="utf-8"><script src="frame.js"></script>');
   fs.writeFileSync(path.join(root, 'index.html'),
     '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>' +
     '<script>window.__inlineRan = true;</script>' +
-    '<script src="probe.js"></script>');
+    '<script src="probe.js"></script>' +
+    '<iframe src="frame.html"></iframe>');
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-data-'));
 
   // Dev trust root (contract §7.1): an ephemeral ed25519 keypair; the host embeds the public
@@ -130,6 +137,8 @@ function connectMacosHost() {
     // Data crosses the control channel base64-encoded (never the message channel).
     ioPut: (url, buf) => request({ ctl: 'ioPut', url, dataB64: Buffer.from(buf).toString('base64') }),
     ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
+    // §6 injection matrix — reports whether the app:// iframe received __shell.
+    frameCheck: () => request({ ctl: 'frameCheck' }),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
     signFile: (p) => {
       const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();

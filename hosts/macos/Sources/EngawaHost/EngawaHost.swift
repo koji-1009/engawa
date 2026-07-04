@@ -277,6 +277,9 @@ final class EngawaHost: NSObject {
                 case "introspect":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     Task { @MainActor [weak self] in self?.runIntrospect(reqId: reqId) }
+                case "frameCheck":
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    Task { @MainActor [weak self] in self?.runFrameCheck(reqId: reqId) }
                 case "subscribe":
                     if let topic = ctl["topic"] as? String {
                         Task { @MainActor [weak self] in self?.runSubscribe(topic: topic) }
@@ -340,6 +343,20 @@ final class EngawaHost: NSObject {
           engawa.on(\(topicLit), function(payload){
             window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'event', topic:\(topicLit), payload:(payload===undefined?null:payload)});
           });
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // §6 injection matrix: report whether the app:// iframe received __shell (it must not).
+    private func runFrameCheck(reqId: Int) {
+        let js = """
+        (function(){
+          window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:{
+            iframeLoaded: window.__iframeLoaded === true,
+            iframeHadShell: window.__iframeHadShell === true,
+            topHasShell: (typeof window.__shell !== 'undefined')
+          }});
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
