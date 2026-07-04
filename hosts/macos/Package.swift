@@ -9,6 +9,7 @@ let package = Package(
     dependencies: [
         .package(path: "../macos-kit"),
         .package(path: "../../adapters/sqlite"),
+        .package(path: "../../adapters/update"),
     ],
     targets: [
         .executableTarget(
@@ -16,6 +17,7 @@ let package = Package(
             dependencies: [
                 .product(name: "EngawaKit", package: "macos-kit"),
                 .product(name: "EngawaSQLite", package: "sqlite"),
+                .product(name: "EngawaUpdate", package: "update"),
             ],
             path: "Sources/EngawaHost"
         )

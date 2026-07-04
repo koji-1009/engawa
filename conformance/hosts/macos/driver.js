@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 
 const REPO = path.join(__dirname, '..', '..', '..');
 const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHost');
@@ -28,6 +29,12 @@ function connectMacosHost() {
     '<script>window.__inlineRan = true;</script>');
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-data-'));
 
+  // Dev trust root (contract §7.1): an ephemeral ed25519 keypair; the host embeds the public
+  // key, the suite signs payloads with the private key (stands in for the Makefile-generated
+  // dev key). The raw 32-byte public key goes to the host as base64.
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const trustRootB64 = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64');
+
   const child = spawn(HOST_BIN, [], {
     env: {
       ...process.env,
@@ -36,6 +43,7 @@ function connectMacosHost() {
       ENGAWA_APP_ROOT: root,
       ENGAWA_DATA_ROOT: dataRoot,
       ENGAWA_BUNDLE_ROOT: BUNDLE_ROOT,
+      ENGAWA_TRUST_ROOT: trustRootB64,
     },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
@@ -113,6 +121,11 @@ function connectMacosHost() {
     off: (topic, handler) => { const set = eventHandlers.get(topic); if (set) set.delete(handler); },
     // §5a PUT-body probe — not part of the shared suite; used by the spike check.
     spike: () => request({ ctl: 'spike' }),
+    // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
+    signFile: (p) => {
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();
+      return { hash: digest.toString('hex'), signature: crypto.sign(null, digest, privateKey).toString('base64') };
+    },
   };
 
   function makeClose() {

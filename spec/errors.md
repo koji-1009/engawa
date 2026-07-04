@@ -27,5 +27,7 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 | `ESRCH` | No process with the given `pid` (`process.*`). |
 | `EBADF` | An unknown or closed handle (e.g. a `sqlite` db handle). |
 | `ESQLITE` | A SQLite error (open failed, malformed SQL, constraint violation, …). Adapter code from `adapters/sqlite`. |
+| `ESIGNATURE` | An update payload's signature did not verify against the embedded trust root (contract §7.1). The payload is discarded; there is no override. |
+| `EHASH` | An update payload's content hash did not match the manifest (contract §8). |
 
 _The registry is seeded with the two codes the contract already names. Command namespaces add their codes here in the same commit as their spec section and conformance test (bootstrap stage 4)._

@@ -2,6 +2,7 @@ import Cocoa
 import WebKit
 import EngawaKit
 import EngawaSQLite
+import EngawaUpdate
 
 // The macOS reference host. Implements the two protocol primitives — receive a
 // string (`engawa` message handler) and evaluate a string (`__shell._deliver`) —
@@ -19,10 +20,10 @@ final class EngawaHost: NSObject {
     let mode: String                 // "app" | "conformance"
     private(set) var capabilities: [String] = []
     let shellJS: String
-    let assetRoot: URL?
     let dirs: AppDirs
     let appVersion: String
     let manifest: Manifest?
+    let slots: SlotManager
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -42,11 +43,18 @@ final class EngawaHost: NSObject {
             exit(3)
         }
         self.shellJS = src
-        self.assetRoot = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-        self.schemeHandler = AppSchemeHandler(assetRoot: assetRoot)
         self.dirs = AppDirs.resolve(env: env)
         self.appVersion = env["ENGAWA_APP_VERSION"] ?? "0.0.0"
         self.manifest = Manifest.load(env: env)
+
+        // A/B slots (§8): the app:// root is the live slot, seeded on first boot from the
+        // packaged assets. Trust root (§7.1) is the embedded/dev ed25519 public key.
+        let seed = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let slotsBase = URL(fileURLWithPath: env["ENGAWA_DATA_ROOT"] ?? dirs.appData)
+            .appendingPathComponent("engawa")
+        let slots = SlotManager(base: slotsBase, seed: seed, trustRootB64: env["ENGAWA_TRUST_ROOT"])
+        self.slots = slots
+        self.schemeHandler = AppSchemeHandler(rootProvider: { slots.liveSlotDir() })
         super.init()
     }
 
@@ -75,12 +83,14 @@ final class EngawaHost: NSObject {
         router.register(NotificationAdapter(conformance: mode == "conformance"))
         router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
         router.register(DialogAdapter(conformance: mode == "conformance"))
-        router.register(SqliteAdapter())   // reference adapter (adapters/sqlite)
+        router.register(SqliteAdapter())          // reference adapter (adapters/sqlite)
+        router.register(UpdateAdapter(host: slots)) // contract-coupled adapter (adapters/update)
         capabilities = router.namespaces
     }
 
     func boot() {
         registerAdapters()
+        _ = slots.boot()   // initialize/seed slots and decide the live slot before loading
 
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")

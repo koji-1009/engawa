@@ -9,10 +9,11 @@ import WebKit
 // whether WKURLSchemeHandler delivers a fetch() request body at all is the open
 // question this handler answers empirically.
 final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
-    let assetRoot: URL?
+    // Resolves the live asset root per request — it is the live A/B slot (§8), not a fixed dir.
+    private let rootProvider: @Sendable () -> URL?
 
-    init(assetRoot: URL?) {
-        self.assetRoot = assetRoot
+    init(rootProvider: @escaping @Sendable () -> URL?) {
+        self.rootProvider = rootProvider
     }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -81,7 +82,7 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
     // MARK: app assets
 
     private func handleAsset(_ task: WKURLSchemeTask, url: URL) {
-        guard let root = assetRoot else {
+        guard let root = rootProvider() else {
             respondText(task, "no asset root configured", mime: "text/plain", status: 500)
             return
         }
