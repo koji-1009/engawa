@@ -79,6 +79,16 @@ function defaultHandlers() {
       try { st = fs.statSync(p); } catch { throw err('ENOENT', 'no such path: ' + p); }
       return { type: st.isDirectory() ? 'directory' : 'file', size: st.size, modified: st.mtimeMs };
     },
+
+    // app (spec/commands/app.md)
+    'app.version': async () => '0.0.0',
+    'app.engineInfo': async () => ({
+      engine: 'mock',
+      engineVersion: process.version,
+      hostVersion: 'mock-0.1',
+      contractVersion: '1.0',
+    }),
+    'app.quit': async () => null,   // the mock host has no process to end
   };
 }
 

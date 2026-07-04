@@ -7,11 +7,15 @@ import WebKit
 // command through the adapter registry (§3). Built-in namespaces are adapters; there
 // is no privileged dispatch path. The only registered adapter so far is `echo`.
 final class EngawaHost: NSObject {
+    static let contractVersion = "1.0"
+    static let hostVersion = "macos-host-0.1"
+
     let mode: String                 // "app" | "conformance"
     private(set) var capabilities: [String] = []
     let shellJS: String
     let assetRoot: URL?
     let dirs: AppDirs
+    let appVersion: String
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -33,6 +37,7 @@ final class EngawaHost: NSObject {
         self.assetRoot = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         self.schemeHandler = AppSchemeHandler(assetRoot: assetRoot)
         self.dirs = AppDirs.resolve(env: env)
+        self.appVersion = env["ENGAWA_APP_VERSION"] ?? "0.0.0"
         super.init()
     }
 
@@ -46,6 +51,9 @@ final class EngawaHost: NSObject {
         router.register(EchoAdapter())
         router.register(PathAdapter(dirs: dirs))
         router.register(FsAdapter())
+        router.register(AppAdapter(appVersion: appVersion,
+                                   hostVersion: Self.hostVersion,
+                                   contractVersion: Self.contractVersion))
         capabilities = router.namespaces
     }
 
@@ -85,17 +93,18 @@ final class EngawaHost: NSObject {
     // documents; a dead __shell (postMessage no-ops) on any other origin (contract §7).
     private func bootstrapScript() -> String {
         let caps = JSON.string(capabilities) ?? "[]"
+        let cv = Self.contractVersion
         return """
         (function(){
           if (location.protocol === 'app:') {
             window.__shell = {
-              contractVersion: "1.0",
+              contractVersion: "\(cv)",
               platform: "macos",
               capabilities: \(caps),
               postMessage: function(s){ window.webkit.messageHandlers.engawa.postMessage(s); }
             };
           } else {
-            window.__shell = { contractVersion: "1.0", platform: "macos", capabilities: [], postMessage: function(){} };
+            window.__shell = { contractVersion: "\(cv)", platform: "macos", capabilities: [], postMessage: function(){} };
           }
         })();
         """

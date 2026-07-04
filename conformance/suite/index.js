@@ -6,5 +6,6 @@ require('./echo.test');
 require('./capabilities.test');
 require('./path.test');
 require('./fs.test');
+require('./app.test');
 
 module.exports = require('../harness').tests;
