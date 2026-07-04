@@ -22,8 +22,10 @@ function connectMacosHost() {
   }
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-conf-'));
+  // The inline <script> must be dead under the default CSP (§7.3); introspect reports it.
   fs.writeFileSync(path.join(root, 'index.html'),
-    '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>');
+    '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>' +
+    '<script>window.__inlineRan = true;</script>');
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-data-'));
 
   const child = spawn(HOST_BIN, [], {
@@ -134,6 +136,7 @@ function connectMacosHost() {
         platform: surface.platform,
         contractVersion: surface.contractVersion,
         capabilities: surface.capabilities,
+        inlineScriptBlocked: surface.inlineScriptBlocked,
       }, behavior);
       return {
         name: 'macos',

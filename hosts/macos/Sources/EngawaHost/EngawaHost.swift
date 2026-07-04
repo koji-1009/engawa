@@ -270,7 +270,8 @@ final class EngawaHost: NSObject {
             frozen: Object.isFrozen(engawa),
             capabilities: engawa.capabilities,
             platform: engawa.platform,
-            contractVersion: engawa.contractVersion
+            contractVersion: engawa.contractVersion,
+            inlineScriptBlocked: (typeof window.__inlineRan === 'undefined')
           }});
         })();
         """

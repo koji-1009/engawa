@@ -97,8 +97,13 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
             respondText(task, "not found: \(rel)", mime: "text/plain", status: 404)
             return
         }
-        respondData(task, data, mime: mimeType(for: candidate.pathExtension), status: 200)
+        respondData(task, data, mime: mimeType(for: candidate.pathExtension), status: 200, csp: true)
     }
+
+    // Default CSP (contract §7.3): confine document content to the app origin. Inline script
+    // is dead by default — no 'unsafe-inline'. Host injection of __shell/shell.js uses the
+    // native user-script path and is not subject to this policy.
+    private let defaultCSP = "default-src 'app:'; script-src 'app:'"
 
     // MARK: response helpers
 
@@ -111,8 +116,9 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
         respondData(task, text.data(using: .utf8)!, mime: mime, status: status)
     }
 
-    private func respondData(_ task: WKURLSchemeTask, _ data: Data, mime: String, status: Int, cors: Bool = false) {
+    private func respondData(_ task: WKURLSchemeTask, _ data: Data, mime: String, status: Int, cors: Bool = false, csp: Bool = false) {
         var headers = ["Content-Type": mime, "Content-Length": "\(data.count)"]
+        if csp { headers["Content-Security-Policy"] = defaultCSP }
         if cors {
             headers["Access-Control-Allow-Origin"] = "*"
             headers["Access-Control-Allow-Methods"] = "GET, PUT, OPTIONS"
