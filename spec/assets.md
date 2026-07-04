@@ -17,7 +17,19 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 
 ## 404 behavior
 
-- A request that resolves within the root but has no backing file is `404` with a `text/plain` body. _Richer 404 semantics (SPA fallback opt-in) are deferred past the slice._
+- A request that resolves within the root but has no backing file is `404` with a `text/plain` body. _Richer 404 semantics (SPA fallback opt-in) are deferred._
+
+## Response headers (per response class)
+
+**App asset responses** (`app://app/…`):
+
+- `Content-Type` (by extension, below) and `Content-Length`.
+- `Content-Security-Policy` (contract §7.3): `default-src app:; script-src app:` at minimum, plus any `engawa.json` relaxations applied verbatim.
+
+**Binary I/O responses** (`app://io/…`, contract §5a):
+
+- `Access-Control-Allow-Origin` covering the app origin (so `fetch` from an app document can read the result), `Access-Control-Allow-Methods: GET, PUT`, and a `204` on a CORS preflight (`OPTIONS`) where the engine issues one.
+- A PUT response body carries the result/error frame as JSON; a GET response body streams the file bytes as `application/octet-stream`.
 
 ## MIME types
 
