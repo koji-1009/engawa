@@ -8,5 +8,6 @@ require('./path.test');
 require('./fs.test');
 require('./app.test');
 require('./clipboard.test');
+require('./window.test');
 
 module.exports = require('../harness').tests;

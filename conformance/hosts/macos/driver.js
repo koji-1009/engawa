@@ -38,6 +38,7 @@ function connectMacosHost() {
 
   let nextReqId = 1;
   const pending = new Map();
+  const eventHandlers = new Map();   // topic -> Set<handler>
   let markReady;
   const ready = new Promise((res) => { markReady = res; });
 
@@ -52,6 +53,11 @@ function connectMacosHost() {
       let msg;
       try { msg = JSON.parse(line); } catch { continue; }
       if (msg.ctl === 'ready') { markReady(); continue; }
+      if (msg.ctl === 'event') {
+        const set = eventHandlers.get(msg.topic);
+        if (set) set.forEach((h) => { try { h(msg.payload); } catch { /* handler error is the test's */ } });
+        continue;
+      }
       if (msg.ctl === 'result') {
         const p = pending.get(msg.reqId);
         if (!p) continue;
@@ -84,8 +90,23 @@ function connectMacosHost() {
     });
   }
 
+  // Relay an event subscription to the live in-page runtime; the host posts back
+  // { ctl:'event', topic, payload } which the stdout loop dispatches here.
+  function on(topic, handler) {
+    let set = eventHandlers.get(topic);
+    if (!set) {
+      set = new Set();
+      eventHandlers.set(topic, set);
+      send({ ctl: 'subscribe', topic });
+    }
+    set.add(handler);
+    return function off() { set.delete(handler); };
+  }
+
   const behavior = {
     invoke: (cmd, args) => request({ ctl: 'invoke', cmd, args: args === undefined ? null : args }),
+    on,
+    off: (topic, handler) => { const set = eventHandlers.get(topic); if (set) set.delete(handler); },
     // §5a PUT-body probe — not part of the shared suite; used by the spike check.
     spike: () => request({ ctl: 'spike' }),
   };

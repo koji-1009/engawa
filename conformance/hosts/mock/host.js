@@ -13,12 +13,18 @@ const path = require('path');
 const SHELL_JS = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'shell-js', 'shell.js'), 'utf8');
 
-// Command handlers served by the mock host, keyed by full `namespace.command`.
-// `echo` remains as the slice fixture; §4 namespaces are added here as they land.
-function defaultHandlers() {
+// Build the command handlers, keyed by full `namespace.command`. `ctx.emitEvent(topic,
+// payload)` lets a handler raise an event frame (contract §2). `echo` remains as the
+// slice fixture; §4 namespaces are added here as they land.
+function buildHandlers(ctx) {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-mock-'));
   const ensure = (p) => { fs.mkdirSync(p, { recursive: true }); return p; };
   const clipboard = { text: '' };
+
+  const win = { width: 1024, height: 720, title: 'Engawa', resizable: true, minimized: false, maximized: false };
+  const closeTokens = new Set();
+  let tokenSeq = 0;
+
   return {
     echo: async (args) => args,
 
@@ -98,6 +104,32 @@ function defaultHandlers() {
       return null;
     },
     'clipboard.readText': async () => clipboard.text,
+
+    // window (spec/commands/window.md) — in-memory window model
+    'window.setTitle': async (a) => { win.title = String((a && a.title) || ''); return null; },
+    'window.getSize': async () => ({ width: win.width, height: win.height }),
+    'window.setSize': async (a) => {
+      if (!a || typeof a.width !== 'number' || typeof a.height !== 'number') throw err('EINVAL', 'width/height required');
+      win.width = a.width; win.height = a.height; return null;
+    },
+    'window.setResizable': async (a) => { win.resizable = !!(a && a.resizable); return null; },
+    'window.minimize': async () => { win.minimized = true; return null; },
+    'window.maximize': async () => { win.maximized = true; return null; },
+    'window.close': async () => null,   // mock has no real window to destroy
+    'window.respondToClose': async (a) => {
+      const token = a && a.token;
+      if (typeof token !== 'number' || !closeTokens.has(token)) throw err('EINVAL', 'unknown or consumed close token');
+      closeTokens.delete(token);
+      return null;
+    },
+    // Conformance testability hook (spec/commands/window.md): simulate a user close attempt.
+    'window.requestClose': async () => {
+      tokenSeq += 1;
+      const token = tokenSeq;
+      closeTokens.add(token);
+      ctx.emitEvent('window.closeRequested', { token });
+      return null;
+    },
   };
 }
 
@@ -114,26 +146,12 @@ function reqPath(a) {
 
 // Build one runtime instance backed by in-process handlers.
 function createMockHost(options = {}) {
-  const handlers = Object.assign(defaultHandlers(), options.handlers || {});
-  const capabilities = options.capabilities ||
-    [...new Set(Object.keys(handlers).map((k) => k.split('.')[0]))];
-
   let outbound = [];         // frames queued for delivery
   let scheduled = false;
 
   const sandbox = { console };
   sandbox.globalThis = sandbox;
   const context = vm.createContext(sandbox);
-
-  const shell = {
-    contractVersion: '1.0',
-    platform: 'mock',
-    capabilities,
-    postMessage(jsonString) { onRequest(jsonString); },
-  };
-  sandbox.__shell = shell;
-
-  vm.runInContext(SHELL_JS, context, { filename: 'shell.js' });
 
   // Flow control (contract §2.1): drain the outbound queue into at most one
   // `_deliver` eval per tick, frames batched into a single JSON array.
@@ -150,6 +168,21 @@ function createMockHost(options = {}) {
   }
 
   function emit(frame) { outbound.push(frame); scheduleFlush(); }
+  function emitEvent(topic, payload) { emit({ t: 'evt', topic, payload }); }
+
+  const handlers = Object.assign(buildHandlers({ emitEvent }), options.handlers || {});
+  const capabilities = options.capabilities ||
+    [...new Set(Object.keys(handlers).map((k) => k.split('.')[0]))];
+
+  const shell = {
+    contractVersion: '1.0',
+    platform: 'mock',
+    capabilities,
+    postMessage(jsonString) { onRequest(jsonString); },
+  };
+  sandbox.__shell = shell;
+
+  vm.runInContext(SHELL_JS, context, { filename: 'shell.js' });
 
   async function onRequest(jsonString) {
     let frame;
@@ -171,7 +204,7 @@ function createMockHost(options = {}) {
   return {
     name: 'mock',
     engawa: context.engawa,
-    emitEvent(topic, payload) { emit({ t: 'evt', topic, payload }); },
+    emitEvent,
   };
 }
 

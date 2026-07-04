@@ -21,6 +21,7 @@ final class EngawaHost: NSObject {
     private var webView: WKWebView!
     private let schemeHandler: AppSchemeHandler
     private var router: Router!
+    private var windowController: WindowController!
 
     // Outbound delivery queue (contract §2.1): one eval per main-loop tick, frames batched.
     private var outbound: [[String: Any]] = []
@@ -59,6 +60,8 @@ final class EngawaHost: NSObject {
             ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
             : NSPasteboard.general
         router.register(ClipboardAdapter(pasteboard: pasteboard))
+        windowController = WindowController(emitter: emitter)
+        router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
         capabilities = router.namespaces
     }
 
@@ -81,15 +84,20 @@ final class EngawaHost: NSObject {
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1024, height: 720), configuration: config)
         webView.navigationDelegate = self
 
-        if mode != "conformance" {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1024, height: 720),
-                             styleMask: [.titled, .closable, .resizable, .miniaturizable],
-                             backing: .buffered, defer: false)
+        // Always back the app with a real NSWindow so the `window` namespace operates on a
+        // genuine window in both modes. Under conformance it stays off-screen and unshown.
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1024, height: 720),
+                         styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                         backing: .buffered, defer: false)
+        w.title = "Engawa"
+        w.contentView = webView
+        window = w
+        windowController.attach(w)
+        if mode == "conformance" {
+            w.setFrameOrigin(NSPoint(x: -10000, y: -10000))   // off-screen; never shown
+        } else {
             w.center()
-            w.title = "Engawa"
-            w.contentView = webView
             w.makeKeyAndOrderFront(nil)
-            window = w
         }
         webView.load(URLRequest(url: URL(string: "app://app/index.html")!))
     }
@@ -210,6 +218,10 @@ final class EngawaHost: NSObject {
                 case "introspect":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     DispatchQueue.main.async { [weak self] in self?.runIntrospect(reqId: reqId) }
+                case "subscribe":
+                    if let topic = ctl["topic"] as? String {
+                        DispatchQueue.main.async { [weak self] in self?.runSubscribe(topic: topic) }
+                    }
                 case "quit":
                     exit(0)
                 default:
@@ -254,6 +266,20 @@ final class EngawaHost: NSObject {
             platform: engawa.platform,
             contractVersion: engawa.contractVersion
           }});
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // Subscribe the in-page runtime to a topic and relay each event out over the control
+    // channel, so the runner (which drives via the proxy) can observe real event delivery.
+    private func runSubscribe(topic: String) {
+        let topicLit = JSON.jsStringLiteral(topic)
+        let js = """
+        (function(){
+          engawa.on(\(topicLit), function(payload){
+            window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'event', topic:\(topicLit), payload:(payload===undefined?null:payload)});
+          });
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
