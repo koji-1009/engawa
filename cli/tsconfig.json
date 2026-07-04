@@ -1,0 +1,25 @@
+{
+  // Forward-compatible with the TS 7 native compiler: ESM only, isolated modules,
+  // verbatim module syntax, and erasable syntax (no enums/namespaces/param-properties),
+  // so Node 24's type stripping runs the sources directly — no build step. tsc is only
+  // used for type checking (`npm run typecheck`).
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
