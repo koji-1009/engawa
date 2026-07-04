@@ -16,6 +16,7 @@ final class EngawaHost: NSObject {
     let assetRoot: URL?
     let dirs: AppDirs
     let appVersion: String
+    let manifest: Manifest?
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -39,6 +40,7 @@ final class EngawaHost: NSObject {
         self.schemeHandler = AppSchemeHandler(assetRoot: assetRoot)
         self.dirs = AppDirs.resolve(env: env)
         self.appVersion = env["ENGAWA_APP_VERSION"] ?? "0.0.0"
+        self.manifest = Manifest.load(env: env)
         super.init()
     }
 
@@ -64,6 +66,7 @@ final class EngawaHost: NSObject {
         router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
         router.register(ShellOpenAdapter(conformance: mode == "conformance"))
         router.register(NotificationAdapter(conformance: mode == "conformance"))
+        router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
         capabilities = router.namespaces
     }
 

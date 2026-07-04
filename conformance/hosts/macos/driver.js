@@ -14,6 +14,7 @@ const os = require('os');
 const REPO = path.join(__dirname, '..', '..', '..');
 const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHost');
 const SHELL_JS = path.join(REPO, 'shell-js', 'shell.js');
+const BUNDLE_ROOT = path.join(REPO, 'conformance', 'fixtures', 'bundle');
 
 function connectMacosHost() {
   if (!fs.existsSync(HOST_BIN)) {
@@ -32,6 +33,7 @@ function connectMacosHost() {
       ENGAWA_SHELL_JS: SHELL_JS,
       ENGAWA_APP_ROOT: root,
       ENGAWA_DATA_ROOT: dataRoot,
+      ENGAWA_BUNDLE_ROOT: BUNDLE_ROOT,
     },
     stdio: ['pipe', 'pipe', 'inherit'],
   });

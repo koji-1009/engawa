@@ -11,5 +11,6 @@ require('./clipboard.test');
 require('./window.test');
 require('./shellOpen.test');
 require('./notification.test');
+require('./process.test');
 
 module.exports = require('../harness').tests;

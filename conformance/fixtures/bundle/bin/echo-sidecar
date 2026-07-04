@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+'use strict';
+// Conformance test sidecar (declared in ../engawa.json, spawned via process.spawn).
+//   default        — echo stdin to stdout, exit 0 when stdin closes.
+//   firehose:<N>   — emit N bytes of 'a' to stdout, then exit 0 (backpressure/volume test).
+const arg = process.argv[2] || '';
+
+if (arg.indexOf('firehose:') === 0) {
+  const total = parseInt(arg.slice('firehose:'.length), 10) || 0;
+  const chunk = Buffer.alloc(65536, 0x61); // 'a'
+  let written = 0;
+  (function pump() {
+    while (written < total) {
+      const size = Math.min(chunk.length, total - written);
+      const ok = process.stdout.write(size === chunk.length ? chunk : chunk.subarray(0, size));
+      written += size;
+      if (!ok) { process.stdout.once('drain', pump); return; }
+    }
+    process.exit(0);
+  })();
+} else {
+  process.stdin.on('data', (d) => process.stdout.write(d));
+  process.stdin.on('end', () => process.exit(0));
+}

@@ -23,5 +23,7 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 | `EISDIR` | The target is a directory where a file was required (`fs.readTextFile`). |
 | `ENOTDIR` | The target is not a directory where one was required (`fs.readDir`). |
 | `ENOTEMPTY` | A directory is not empty and the operation needs it to be (`fs.remove` without `recursive`). |
+| `EPERM` | The operation is not permitted: `process.spawn` of an undeclared or out-of-bundle target (contract §7.2). |
+| `ESRCH` | No process with the given `pid` (`process.*`). |
 
 _The registry is seeded with the two codes the contract already names. Command namespaces add their codes here in the same commit as their spec section and conformance test (bootstrap stage 4)._

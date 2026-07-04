@@ -1,0 +1,5 @@
+{
+  "id": "dev.engawa.conformance",
+  "version": "0.0.0",
+  "sidecars": ["./bin/echo-sidecar"]
+}

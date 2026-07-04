@@ -9,9 +9,31 @@ const vm = require('vm');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const child_process = require('child_process');
 
 const SHELL_JS = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'shell-js', 'shell.js'), 'utf8');
+
+// The conformance app bundle: manifest + sidecar allowlist (contract §7.2), shared with
+// the macOS host via ENGAWA_BUNDLE_ROOT.
+const BUNDLE_ROOT = path.join(__dirname, '..', '..', 'fixtures', 'bundle');
+let MANIFEST = { sidecars: [] };
+try { MANIFEST = JSON.parse(fs.readFileSync(path.join(BUNDLE_ROOT, 'engawa.json'), 'utf8')); } catch { /* no bundle */ }
+const PROC_CAP = 8 * 1024 * 1024;
+
+function resolveSidecar(command) {
+  if (!Array.isArray(MANIFEST.sidecars) || !MANIFEST.sidecars.includes(command)) return null;
+  const resolved = path.resolve(BUNDLE_ROOT, command);
+  if (resolved !== BUNDLE_ROOT && !resolved.startsWith(BUNDLE_ROOT + path.sep)) return null;
+  return resolved;
+}
+
+// Longest byte length ≤ take that does not split a UTF-8 sequence.
+function validUtf8End(buf, take) {
+  let end = take;
+  while (end > 0 && end < buf.length && (buf[end] & 0xc0) === 0x80) end--;
+  return end;
+}
 
 // Build the command handlers, keyed by full `namespace.command`. `ctx.emitEvent(topic,
 // payload)` lets a handler raise an event frame (contract §2). `echo` remains as the
@@ -27,6 +49,30 @@ function buildHandlers(ctx) {
 
   const shellOpenRecorded = [];
   const notificationsRecorded = [];
+
+  // process (spec/commands/process.md) — pull streams over child_process
+  const procs = new Map();
+  const newStream = () => ({ buffer: Buffer.alloc(0), eof: false, paused: false, source: null });
+  function wireStream(pid, st, which, src) {
+    const stream = st[which];
+    stream.source = src;
+    src.on('data', (chunk) => {
+      const wasEmpty = stream.buffer.length === 0;
+      stream.buffer = Buffer.concat([stream.buffer, chunk]);
+      if (stream.buffer.length >= PROC_CAP) { stream.paused = true; src.pause(); }
+      if (wasEmpty) ctx.emitEvent('process.readable', { pid, stream: which });
+    });
+    src.on('end', () => { stream.eof = true; maybeProcExit(pid); });
+  }
+  function maybeProcExit(pid) {
+    const st = procs.get(pid);
+    if (!st) return;
+    if (st.exited && !st.exitEmitted && st.stdout.eof && st.stderr.eof
+        && st.stdout.buffer.length === 0 && st.stderr.buffer.length === 0) {
+      st.exitEmitted = true;
+      ctx.emitEvent('process.exit', { pid, code: st.exitCode });
+    }
+  }
 
   return {
     echo: async (args) => args,
@@ -154,6 +200,56 @@ function buildHandlers(ctx) {
       return null;
     },
     'notification.__recorded': async () => notificationsRecorded.slice(),
+
+    // process (spec/commands/process.md)
+    'process.spawn': async (a) => {
+      const command = a && a.command;
+      if (typeof command !== 'string' || !command) throw err('EINVAL', 'command required');
+      const exe = resolveSidecar(command);
+      if (!exe) throw err('EPERM', 'not a declared in-bundle sidecar: ' + command);
+      const args = a.args && Array.isArray(a.args) ? a.args.filter((x) => typeof x === 'string') : [];
+      const proc = child_process.spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const pid = proc.pid;
+      const st = { proc, stdout: newStream(), stderr: newStream(), exited: false, exitCode: 0, exitEmitted: false };
+      procs.set(pid, st);
+      wireStream(pid, st, 'stdout', proc.stdout);
+      wireStream(pid, st, 'stderr', proc.stderr);
+      proc.on('exit', (code) => { st.exited = true; st.exitCode = code == null ? -1 : code; maybeProcExit(pid); });
+      return { pid };
+    },
+    'process.stdinWrite': async (a) => {
+      if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
+      if (typeof a.data !== 'string') throw err('EINVAL', 'data required');
+      const st = procs.get(a.pid);
+      if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      st.proc.stdin.write(Buffer.from(a.data, 'utf8'));
+      return null;
+    },
+    'process.read': async (a) => {
+      if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
+      const st = procs.get(a.pid);
+      if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      const which = a.stream === 'stderr' ? 'stderr' : 'stdout';
+      const stream = st[which];
+      const maxBytes = typeof a.maxBytes === 'number' ? a.maxBytes : 65536;
+      const take = Math.min(Math.max(maxBytes, 0), stream.buffer.length);
+      const end = validUtf8End(stream.buffer, take);
+      const data = stream.buffer.toString('utf8', 0, end);
+      stream.buffer = stream.buffer.subarray(end);
+      if (stream.paused && !stream.eof && stream.buffer.length < PROC_CAP && stream.source) {
+        stream.paused = false; stream.source.resume();
+      }
+      const eof = stream.eof && stream.buffer.length === 0;
+      maybeProcExit(a.pid);
+      return { data, eof };
+    },
+    'process.kill': async (a) => {
+      if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
+      const st = procs.get(a.pid);
+      if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      st.proc.kill('SIGTERM');
+      return null;
+    },
   };
 }
 
