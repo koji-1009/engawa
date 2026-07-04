@@ -1,0 +1,58 @@
+# Engawa Design
+
+The contract (`spec/`) defines *what*; this document states *why it is built this way*.
+
+## Thesis
+
+A desktop app is a web app plus a fixed set of native services: windows, dialogs, filesystem, notifications, processes, durable data, self-managed updates. Engawa provides exactly that set, as a **specification** — one protocol contract, implemented independently on each platform in that platform's first-class language, rendering through the OS WebView.
+
+The engawa — the veranda between house and garden — is the contract layer between native and web. An Engawa app is **JS + adapters**.
+
+## Structure
+
+| Layer | What it is |
+|-------|-----------|
+| `spec/` | The product. Normative contract: handshake, wire protocol, command set, resilience guarantees. |
+| `conformance/` | Executable form of the spec. A host is conformant when the suite passes — on the real host and on the Node mock host. |
+| `shell-js/` | Shared JS runtime, identical bytes on every host. Owns promise correlation, invoke, events. |
+| Hosts | One per platform, no shared code. macOS: Swift + WKWebView. Windows: C# + WebView2. Linux: C++ (gtkmm) + WebKitGTK. Each is a small program on its platform's most-paved path. |
+| Adapters | The extension model and the app model. 1 adapter = 1 namespace = 1 repo, consumed as a hash-pinned source dependency, compiled into the host at app build time. |
+
+Hosts implement two primitives — receive a string, evaluate a string — and a set of command handlers. Everything protocol-shaped lives in shell.js. This keeps the surface where three implementations can diverge as small as it can be.
+
+## Principles
+
+**The contract is the product; hosts are commodities.** Quality lives in the spec, the conformance suite, and the mock host. A host is done when the suite passes. Cross-platform consistency is won in error-code mapping and conformance tests.
+
+**System WebView, and its consequences owned.** The OS renders; the contract absorbs what that implies. Engine version is checked at boot against a spec'd floor. Renderer crashes are recovered by rule, not by luck. WebView storage is declared cache — durable data belongs in `fs`/`path.appData` or in a durable adapter.
+
+**Adapters are the app model.** An Engawa app is JS + adapters. An adapter is defined spec-first: spec.md and a conformance module in, per-platform implementations out. The N-platform implementation cost is accepted; the repo ships `/new-adapter` to scaffold it. Built-ins are in-tree adapters; there is no privileged dispatch path, so the adapter API is load-bearing from the first line.
+
+**Two reference adapters ship with v1: `sqlite` and `update`. They are one claim, two faces.** SQLite guarantees data does not depend on the WebView's whims; update guarantees code does not depend on full-binary redistribution. Persistence of data and self-managed delivery of code are the two properties that separate a desktop app from a website — with both, Engawa is an app engine; with either alone, it is a shell. They are also technically complementary as adapter-API validation: sqlite is request-driven, local, synchronous-shaped; update is host-event-driven, long-running, network-facing, and ends in the self-referential act of the host replacing itself. An adapter API that carries both is trustworthy; one that carries only sqlite is half-tested.
+
+Update speaks two modes over one manifest — **app-update** (signed asset swap, atomic, applies at relaunch) and **full-update** (base binary; the adapter delivers a verified installer and the handoff event, the OS executes the replacement). Compatibility between modes is decided by the same `capabilities` vocabulary the boot handshake uses. Trust (signature verification, embedded public key) is contract law; delivery (where manifests live, channels, polling) is adapter freedom.
+
+**Sidecars below adapters.** App-specific native needs run as spawned processes over stdio JSON-RPC (`process.*`). Promotion path: recurring sidecar pattern → adapter repo → adapter index.
+
+**Static composition.** The host is built per app, with the app's chosen adapters compiled in. Distribution of adapters is a git commit hash. No registry, no dynamic loading, no binary distribution.
+
+**Monorepo.** A change touching spec + shell.js + conformance + host + adapter + example lands as one atomic commit; divergence among them is this architecture's failure mode. `adapters/sqlite/` mirrors the external adapter layout exactly and can be extracted verbatim.
+
+**Two verification layers.** The conformance suite defines host conformance. `make notes` — build, bundle, launch `examples/notes`, write a record, relaunch, read it back, apply a signed update, scripted — is the acceptance gate: it covers packaging, entitlements, and real-bundle behavior that conformance cannot reach. One command is the entire acceptance procedure.
+
+**Clean-room hosts.** Windows and Linux hosts are implemented from the frozen spec, shell.js, and the suite — the macOS host source is off-limits to the implementer. Spec holes are only visible to an implementer without reference-host knowledge; ambiguities resolve into the spec.
+
+## Known risks
+
+| Risk | Position |
+|------|----------|
+| Contract under-specification | The central risk. Suite + mock host written first; ambiguities resolve into the spec, never into hosts. |
+| `app://io` PUT-body streaming per engine | Verified against the real engine before the command set depends on it (WKURLSchemeHandler upload streaming is the least documented of the three). Fallback: chunked POST with a session token. |
+| WebView engine divergence (rendering/JS features) | Out of contract scope. Engine matrix documented; apps feature-detect. |
+| Spec freeze discipline | `contractVersion` negotiation in the handshake; additive-only within a major. |
+| Governance | The maintainer decides unilaterally. The adapter promotion path implies a multi-implementer world; the tension is acknowledged and deferred until a second independent maintainer exists. |
+
+## Why this project
+
+1. **Spec primacy:** this class of software written as a specification, with implementations as its commodities.
+2. **Constitutional restraint:** a shell that permanently refuses in-host custom commands, extending only through adapters and sidecars. The constraint is the design.
