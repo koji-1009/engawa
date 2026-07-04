@@ -1,16 +1,70 @@
 #!/usr/bin/env node
-// Engawa conformance runner — entry point for `make conformance`.
-//
-// Bootstrap stage 1: the harness is wired and reports an honest failure — there is
-// no host to test yet. Stage 2 lands the first live assertion executed against BOTH
-// the macOS reference host and the Node mock host (contract §11).
-
 'use strict';
+// Engawa conformance runner — entry point for `make conformance` (contract §11).
+//
+// Runs the suite against every configured host. A host is conformant only when all
+// assertions pass; overall exit is 0 only when EVERY required host is conformant.
+// The macOS reference host and the Node mock host are both required, so this stays
+// red until the macOS host lands (bootstrap stage 2 part 2).
 
-function main() {
-  console.error('conformance: no host targets wired yet (bootstrap stage 1).');
-  console.error('The suite runs against the macOS host and the Node mock host once stage 2 lands.');
-  process.exit(1);
+const suite = require('./suite');           // array of { name, fn }
+const { createMockHost } = require('./hosts/mock/host');
+const { connectMacosHost } = require('./hosts/macos/driver');
+
+// Each driver returns { engawa } or throws if the host is unavailable.
+const HOSTS = [
+  { name: 'mock', required: true, connect: async () => createMockHost() },
+  { name: 'macos', required: true, connect: async () => connectMacosHost() },
+];
+
+async function runHost(host) {
+  let handle;
+  try {
+    handle = await host.connect();
+  } catch (e) {
+    return { name: host.name, required: host.required, available: false, error: e.message, results: [] };
+  }
+  const results = [];
+  for (const t of suite) {
+    try {
+      await t.fn(handle.engawa);
+      results.push({ name: t.name, ok: true });
+    } catch (e) {
+      results.push({ name: t.name, ok: false, error: e.message });
+    }
+  }
+  if (handle.close) { try { await handle.close(); } catch { /* best-effort */ } }
+  return { name: host.name, required: host.required, available: true, results };
 }
 
-main();
+async function main() {
+  let ok = true;
+  let asserted = 0;
+
+  for (const host of HOSTS) {
+    const run = await runHost(host);
+    console.log(`\n# host: ${run.name}`);
+    if (!run.available) {
+      console.log(`  UNAVAILABLE: ${run.error}`);
+      if (run.required) ok = false;
+      continue;
+    }
+    for (const r of run.results) {
+      asserted++;
+      if (r.ok) {
+        console.log(`  ok    ${r.name}`);
+      } else {
+        ok = false;
+        console.log(`  FAIL  ${r.name}: ${r.error}`);
+      }
+    }
+    if (run.results.length === 0) {
+      console.log('  (no assertions)');
+    }
+  }
+
+  console.log(`\n${ok ? 'PASS' : 'FAIL'} — ${asserted} assertions across ${HOSTS.length} host(s)`);
+  process.exit(ok ? 0 : 1);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

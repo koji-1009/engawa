@@ -21,6 +21,16 @@ Host → JS delivery: the host evaluates `__shell._deliver(jsonArrayString)`. `_
 
 shell.js — the shared runtime library, identical bytes on every host — is injected immediately after `__shell`. It implements `invoke()`, promise correlation, and event subscription on top of the two host primitives. Hosts implement exactly two things: receive a string, evaluate a string.
 
+### 1.1 Public runtime API (normative)
+
+shell.js exposes the runtime as `globalThis.engawa` — the sole public surface app code uses. It is stable within a contract major version:
+
+- `engawa.invoke(cmd, args) → Promise` — issues one request. Resolves with the response `value`; rejects with an `Error` whose `.code` is the error frame's `code` (§2) and whose `.message` is its `message`. `args` defaults to `null`.
+- `engawa.on(topic, handler) → unsubscribe` — subscribes to an event topic (§4). Returns a function that removes the subscription; `engawa.off(topic, handler)` is equivalent.
+- `engawa.contractVersion`, `engawa.platform`, `engawa.capabilities` — read-only copies of the handshake fields.
+
+Injection is idempotent: re-running shell.js in a document that already has it (history traversal, double injection per §6) MUST NOT reset pending requests or subscriptions. shell.js signals this to itself via `__shell.__engawaLoaded`.
+
 ## 2. Wire protocol
 
 JSON frames over the string channel:
