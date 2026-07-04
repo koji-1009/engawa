@@ -6,6 +6,7 @@ require('./echo.test');
 require('./capabilities.test');
 require('./csp.test');
 require('./injection.test');
+require('./engine.test');
 require('./limits.test');
 require('./path.test');
 require('./fs.test');

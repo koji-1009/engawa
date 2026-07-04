@@ -7,6 +7,7 @@ struct AppAdapter: Adapter {
     let appVersion: String
     let hostVersion: String
     let contractVersion: String
+    let engineVersion: String
     var autotest = false
 
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue {
@@ -16,7 +17,7 @@ struct AppAdapter: Adapter {
         case "engineInfo":
             return .object([
                 "engine": .string("WKWebView"),
-                "engineVersion": .string(ProcessInfo.processInfo.operatingSystemVersionString),
+                "engineVersion": .string(engineVersion),
                 "hostVersion": .string(hostVersion),
                 "contractVersion": .string(contractVersion),
             ])

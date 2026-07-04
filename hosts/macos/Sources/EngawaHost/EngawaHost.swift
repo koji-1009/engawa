@@ -16,12 +16,30 @@ import EngawaUpdate
 final class EngawaHost: NSObject {
     static let contractVersion = "0.1.0"   // DRAFT — pre-1.0 semver until the contract is frozen
     static let hostVersion = "macos-host-0.1.0"
+    static let engineFloor = "605.1.15"    // WebKit floor (§9); modern WebKit far exceeds it
+
+    // Detected engine version, or the ENGAWA_FAKE_ENGINE_VERSION substitute (§9 testability hook).
+    static func engineVersion(env: [String: String]) -> String {
+        if let fake = env["ENGAWA_FAKE_ENGINE_VERSION"] { return fake }
+        return (Bundle(identifier: "com.apple.WebKit")?.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "99999"
+    }
+
+    static func meetsEngineFloor(_ version: String) -> Bool {
+        func parts(_ s: String) -> [Int] { s.split(separator: ".").map { Int($0) ?? 0 } }
+        let v = parts(version), floor = parts(engineFloor)
+        for i in 0..<max(v.count, floor.count) {
+            let a = i < v.count ? v[i] : 0, b = i < floor.count ? floor[i] : 0
+            if a != b { return a > b }
+        }
+        return true
+    }
 
     let mode: String                 // "app" | "conformance"
     private(set) var capabilities: [String] = []
     let shellJS: String
     let dirs: AppDirs
     let appVersion: String
+    let engineVersion: String
     let manifest: Manifest?
     let slots: SlotManager
     let ioTokens = IoTokenStore()   // §5a binary I/O tokens, shared with the scheme handler
@@ -58,6 +76,7 @@ final class EngawaHost: NSObject {
         self.shellJS = shellSrc
         self.dirs = AppDirs.resolve(env: env)
         self.appVersion = env["ENGAWA_APP_VERSION"] ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+        self.engineVersion = Self.engineVersion(env: env)
         self.manifest = Manifest.load(env: env)
 
         // App assets seed: ENGAWA_APP_ROOT, else <bundle>/Resources/app.
@@ -96,6 +115,7 @@ final class EngawaHost: NSObject {
         router.register(AppAdapter(appVersion: appVersion,
                                    hostVersion: Self.hostVersion,
                                    contractVersion: Self.contractVersion,
+                                   engineVersion: engineVersion,
                                    autotest: autotest))
         // A private pasteboard under conformance so the suite never touches the user's clipboard.
         let pasteboard = mode == "conformance"
@@ -115,6 +135,13 @@ final class EngawaHost: NSObject {
 
     func boot() {
         registerAdapters()
+
+        // §9 engine floor: below the spec minimum → spec'd error screen, no partial boot.
+        guard Self.meetsEngineFloor(engineVersion) else {
+            rejectEngineFloor()
+            return
+        }
+
         _ = slots.boot()   // initialize/seed slots and decide the live slot before loading
 
         let config = WKWebViewConfiguration()
@@ -149,6 +176,26 @@ final class EngawaHost: NSObject {
             w.makeKeyAndOrderFront(nil)
         }
         webView.load(URLRequest(url: URL(string: "app://app/index.html")!))
+    }
+
+    // §9: engine below the floor. No app, no __shell — a spec'd error screen (or, under
+    // conformance, a report + exit so the suite can assert floor rejection on any machine).
+    private func rejectEngineFloor() {
+        if mode == "conformance" {
+            Out.line(["ctl": "floorRejected", "detected": engineVersion, "required": Self.engineFloor])
+            exit(0)
+        }
+        let html = "<!doctype html><meta charset=\"utf-8\"><title>Unsupported</title>"
+            + "<h1>Unsupported engine</h1><p>Detected \(engineVersion); requires at least \(Self.engineFloor).</p>"
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 220),
+                         styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let errorView = WKWebView(frame: w.contentLayoutRect)
+        errorView.loadHTMLString(html, baseURL: nil)
+        w.contentView = errorView
+        w.title = "Engawa"
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        window = w
     }
 
     // Bootstrap: define __shell before shell.js. Real primitives on app:// top-level

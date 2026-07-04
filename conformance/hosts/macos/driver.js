@@ -18,6 +18,41 @@ const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHos
 const SHELL_JS = path.join(REPO, 'shell-js', 'shell.js');
 const BUNDLE_ROOT = path.join(REPO, 'conformance', 'fixtures', 'bundle');
 
+// §9: spawn a throwaway host with a faked engine version and observe whether it rejects the
+// engine floor (no boot) or reaches ready. Independent of the connected host.
+function checkEngineFloor(fakeVersion) {
+  return new Promise((resolve) => {
+    const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-floor-'));
+    fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
+    const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-floordata-'));
+    const c = spawn(HOST_BIN, [], {
+      env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
+             ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_FAKE_ENGINE_VERSION: String(fakeVersion) },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let done = false, b = '';
+    const finish = (r) => {
+      if (done) return; done = true;
+      try { c.kill('SIGKILL'); } catch { /* ignore */ }
+      try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
+      resolve(r);
+    };
+    c.stdout.on('data', (d) => {
+      b += d.toString('utf8');
+      let i;
+      while ((i = b.indexOf('\n')) >= 0) {
+        const line = b.slice(0, i); b = b.slice(i + 1);
+        if (!line.trim()) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.ctl === 'floorRejected') finish({ rejected: true, detected: m.detected, required: m.required });
+        else if (m.ctl === 'ready') finish({ rejected: false });
+      }
+    });
+    setTimeout(() => finish({ rejected: false, timeout: true }), 8000);
+  });
+}
+
 function connectMacosHost() {
   if (!fs.existsSync(HOST_BIN)) {
     throw new Error(`macOS host not built: ${HOST_BIN} — run \`swift build\` in hosts/macos (or \`make conformance\`)`);
@@ -139,6 +174,8 @@ function connectMacosHost() {
     ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
     // §6 injection matrix — reports whether the app:// iframe received __shell.
     frameCheck: () => request({ ctl: 'frameCheck' }),
+    // §9 engine floor — spawns a throwaway host with a faked engine version.
+    checkEngineFloor: (v) => checkEngineFloor(v),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
     signFile: (p) => {
       const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();
