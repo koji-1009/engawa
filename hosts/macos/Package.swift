@@ -8,12 +8,14 @@ let package = Package(
     platforms: [.macOS(.v13)],   // contract §9 OS floor
     dependencies: [
         .package(path: "../macos-kit"),
+        .package(path: "../../adapters/sqlite"),
     ],
     targets: [
         .executableTarget(
             name: "EngawaHost",
             dependencies: [
                 .product(name: "EngawaKit", package: "macos-kit"),
+                .product(name: "EngawaSQLite", package: "sqlite"),
             ],
             path: "Sources/EngawaHost"
         )

@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const child_process = require('child_process');
+const nodeSqlite = require('node:sqlite');
 
 const SHELL_JS = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'shell-js', 'shell.js'), 'utf8');
@@ -50,6 +51,8 @@ function buildHandlers(ctx) {
   const shellOpenRecorded = [];
   const notificationsRecorded = [];
   const dialog = { next: null };
+  const sqdbs = new Map();
+  let sqNext = 1;
 
   // process (spec/commands/process.md) — pull streams over child_process
   const procs = new Map();
@@ -260,6 +263,40 @@ function buildHandlers(ctx) {
       return takeDialog({ button: 0 });
     },
     'dialog.__setResponse': async (a) => { dialog.next = a; return null; },
+
+    // sqlite (adapters/sqlite/spec.md) — via node:sqlite; the same namespace the macOS adapter serves
+    'sqlite.open': async (a) => {
+      if (!a || typeof a.path !== 'string' || !a.path) throw err('EINVAL', 'path required');
+      let db;
+      try { db = new nodeSqlite.DatabaseSync(a.path); } catch (e) { throw err('ESQLITE', e.message); }
+      const handle = sqNext++;
+      sqdbs.set(handle, db);
+      return { db: handle };
+    },
+    'sqlite.execute': async (a) => {
+      const db = sqdbs.get(a && a.db);
+      if (!db) throw err('EBADF', 'unknown db handle');
+      if (typeof a.sql !== 'string') throw err('EINVAL', 'sql required');
+      try {
+        const r = db.prepare(a.sql).run(...sqliteParams(a.params));
+        return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) };
+      } catch (e) { throw err('ESQLITE', e.message); }
+    },
+    'sqlite.query': async (a) => {
+      const db = sqdbs.get(a && a.db);
+      if (!db) throw err('EBADF', 'unknown db handle');
+      if (typeof a.sql !== 'string') throw err('EINVAL', 'sql required');
+      try {
+        return { rows: db.prepare(a.sql).all(...sqliteParams(a.params)).map(sqliteRow) };
+      } catch (e) { throw err('ESQLITE', e.message); }
+    },
+    'sqlite.close': async (a) => {
+      const db = sqdbs.get(a && a.db);
+      if (!db) throw err('EBADF', 'unknown db handle');
+      db.close();
+      sqdbs.delete(a.db);
+      return null;
+    },
   };
 
   function takeDialog(fallback) {
@@ -278,6 +315,22 @@ function err(code, message) {
 function reqPath(a) {
   if (!a || typeof a.path !== 'string' || a.path.length === 0) throw err('EINVAL', 'path required');
   return a.path;
+}
+
+// Booleans bind as 0/1 (SQLite has no boolean type) — matches the macOS adapter.
+function sqliteParams(params) {
+  if (!Array.isArray(params)) return [];
+  return params.map((p) => (typeof p === 'boolean' ? (p ? 1 : 0) : p));
+}
+
+// node:sqlite returns null-prototype rows and BigInt integers; normalize to plain JSON.
+function sqliteRow(row) {
+  const out = {};
+  for (const k of Object.keys(row)) {
+    const v = row[k];
+    out[k] = typeof v === 'bigint' ? Number(v) : v;
+  }
+  return out;
 }
 
 // Build one runtime instance backed by in-process handlers.

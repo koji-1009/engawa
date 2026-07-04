@@ -1,6 +1,7 @@
 import Cocoa
 import WebKit
 import EngawaKit
+import EngawaSQLite
 
 // The macOS reference host. Implements the two protocol primitives — receive a
 // string (`engawa` message handler) and evaluate a string (`__shell._deliver`) —
@@ -74,6 +75,7 @@ final class EngawaHost: NSObject {
         router.register(NotificationAdapter(conformance: mode == "conformance"))
         router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
         router.register(DialogAdapter(conformance: mode == "conformance"))
+        router.register(SqliteAdapter())   // reference adapter (adapters/sqlite)
         capabilities = router.namespaces
     }
 

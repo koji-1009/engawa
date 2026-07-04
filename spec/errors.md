@@ -25,5 +25,7 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 | `ENOTEMPTY` | A directory is not empty and the operation needs it to be (`fs.remove` without `recursive`). |
 | `EPERM` | The operation is not permitted: `process.spawn` of an undeclared or out-of-bundle target (contract §7.2). |
 | `ESRCH` | No process with the given `pid` (`process.*`). |
+| `EBADF` | An unknown or closed handle (e.g. a `sqlite` db handle). |
+| `ESQLITE` | A SQLite error (open failed, malformed SQL, constraint violation, …). Adapter code from `adapters/sqlite`. |
 
 _The registry is seeded with the two codes the contract already names. Command namespaces add their codes here in the same commit as their spec section and conformance test (bootstrap stage 4)._

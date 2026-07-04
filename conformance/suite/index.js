@@ -15,4 +15,7 @@ require('./notification.test');
 require('./process.test');
 require('./dialog.test');
 
+// Reference-adapter conformance (adapters/*/conformance), run against hosts that serve them.
+require('../../adapters/sqlite/conformance/sqlite.test');
+
 module.exports = require('../harness').tests;
