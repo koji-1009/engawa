@@ -1,13 +1,106 @@
 'use strict';
 // macOS reference-host driver for the conformance runner.
 //
-// Part 2 of the vertical slice builds this out: launch the Swift host in a headless
-// conformance mode, load the suite into an app:// test page against the real in-page
-// shell.js, and expose an `engawa`-shaped proxy (or collect the in-page report) so the
-// runner drives the same assertions it runs on the mock host.
+// Launches the Swift host in conformance mode and exposes an `engawa`-shaped proxy.
+// Each invoke() is forwarded over a stdio control channel to the host, which runs it
+// through the REAL in-page shell.js (round-trip to native dispatch) and reports back.
+// So the same suite that runs against the mock host here exercises the full live stack.
+
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const REPO = path.join(__dirname, '..', '..', '..');
+const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHost');
+const SHELL_JS = path.join(REPO, 'shell-js', 'shell.js');
 
 function connectMacosHost() {
-  throw new Error('macOS host not built yet (bootstrap stage 2 part 2)');
+  if (!fs.existsSync(HOST_BIN)) {
+    throw new Error(`macOS host not built: ${HOST_BIN} — run \`swift build\` in hosts/macos (or \`make conformance\`)`);
+  }
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-conf-'));
+  fs.writeFileSync(path.join(root, 'index.html'),
+    '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>');
+
+  const child = spawn(HOST_BIN, [], {
+    env: {
+      ...process.env,
+      ENGAWA_CONFORMANCE: '1',
+      ENGAWA_SHELL_JS: SHELL_JS,
+      ENGAWA_APP_ROOT: root,
+      ENGAWA_APP_CAPS: 'echo',
+    },
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+
+  let nextReqId = 1;
+  const pending = new Map();
+  let markReady;
+  const ready = new Promise((res) => { markReady = res; });
+
+  let buf = '';
+  child.stdout.on('data', (chunk) => {
+    buf += chunk.toString('utf8');
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx);
+      buf = buf.slice(idx + 1);
+      if (!line.trim()) continue;
+      let msg;
+      try { msg = JSON.parse(line); } catch { continue; }
+      if (msg.ctl === 'ready') { markReady(); continue; }
+      if (msg.ctl === 'result') {
+        const p = pending.get(msg.reqId);
+        if (!p) continue;
+        pending.delete(msg.reqId);
+        if (msg.ok) p.resolve(msg.value);
+        else {
+          const e = new Error((msg.err && msg.err.message) || 'command failed');
+          e.code = msg.err && msg.err.code;
+          p.reject(e);
+        }
+      }
+    }
+  });
+
+  child.on('exit', (code) => {
+    const err = new Error(`macOS host exited (code ${code})`);
+    for (const p of pending.values()) p.reject(err);
+    pending.clear();
+  });
+
+  function send(obj) {
+    try { child.stdin.write(JSON.stringify(obj) + '\n'); } catch { /* host gone */ }
+  }
+
+  function request(ctl) {
+    const reqId = nextReqId++;
+    return new Promise((resolve, reject) => {
+      pending.set(reqId, { resolve, reject });
+      send({ ...ctl, reqId });
+    });
+  }
+
+  const engawa = {
+    invoke: (cmd, args) => request({ ctl: 'invoke', cmd, args: args === undefined ? null : args }),
+    // §5a PUT-body probe — not part of the shared suite; used by the spike check.
+    spike: () => request({ ctl: 'spike' }),
+  };
+
+  return ready.then(() => ({
+    name: 'macos',
+    engawa,
+    close: () => new Promise((resolve) => {
+      child.on('exit', () => {
+        try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* ignore */ }
+        resolve();
+      });
+      send({ ctl: 'quit' });
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
+    }),
+  }));
 }
 
 module.exports = { connectMacosHost };

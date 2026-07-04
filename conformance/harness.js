@@ -17,10 +17,34 @@
     if (!cond) throw new Error(msg || 'assertion failed');
   }
 
+  // Structural, key-order-insensitive equality. JSON objects are unordered, and hosts
+  // that route values through native map types (e.g. macOS NSDictionary) do not preserve
+  // key order — comparing by JSON.stringify would spuriously fail.
+  function deepEqual(a, b) {
+    if (a === b) return true;
+    if (typeof a !== typeof b) return false;
+    if (a === null || b === null) return a === b;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+      return true;
+    }
+    if (typeof a === 'object') {
+      var ka = Object.keys(a), kb = Object.keys(b);
+      if (ka.length !== kb.length) return false;
+      for (var j = 0; j < ka.length; j++) {
+        if (!Object.prototype.hasOwnProperty.call(b, ka[j])) return false;
+        if (!deepEqual(a[ka[j]], b[ka[j]])) return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
   function assertEqual(actual, expected, msg) {
-    var a = JSON.stringify(actual);
-    var e = JSON.stringify(expected);
-    if (a !== e) throw new Error((msg || 'assertEqual') + ': expected ' + e + ', got ' + a);
+    if (!deepEqual(actual, expected)) {
+      throw new Error((msg || 'assertEqual') + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+    }
   }
 
   var api = { test: test, tests: tests, assert: assert, assertEqual: assertEqual };

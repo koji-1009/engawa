@@ -1,0 +1,12 @@
+# Swift / SwiftPM build artifacts
+.build/
+*.xcodeproj
+
+# Node
+node_modules/
+
+# Engawa build output (bundles, keys generated at build time)
+build/
+
+# macOS
+.DS_Store

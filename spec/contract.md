@@ -117,6 +117,9 @@ Binary never travels the message channel. It rides the scheme handler:
 - **Read:** `fs.openRead(path)` → `{ url: "app://io/<token>" }`; JS fetches a streamed body. Token single-use, expires on completion or 30 s idle.
 - **Write:** `fs.openWrite(path)` → `{ url: "app://io/<token>" }`; JS `fetch(url, { method: "PUT", body })`; the PUT response body carries the result/error frame as JSON.
 - `app://io/*` is reserved; asset serving MUST NOT collide.
+- `app://io` is a **distinct origin** from the app's asset origin (§5). A host MUST attach response headers that let the app page read `app://io` responses — `Access-Control-Allow-Origin` covering the app origin — and MUST answer a CORS preflight (`OPTIONS`) on `app://io` should the engine issue one. Without this the app cannot read the result/error frame the PUT returns.
+
+> Verified (bootstrap stage 2 spike): on the reference engine the PUT request body reaches the scheme handler intact (`URLRequest.httpBody`), so the message channel is never touched for binary. The design.md fallback (chunked POST + session token) is therefore unneeded. The only refinement the spike forced is the CORS requirement above — the app origin and `app://io` differ, so the response must opt the app origin in.
 
 ## 6. Injection semantics (normative)
 

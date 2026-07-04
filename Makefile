@@ -6,7 +6,7 @@
 
 NODE ?= node
 
-.PHONY: help conformance notes clean
+.PHONY: help conformance notes clean host-macos
 
 help:
 	@echo "Engawa targets:"
@@ -15,8 +15,12 @@ help:
 	@echo "  make clean        — remove build artifacts"
 
 # Gate 1 — conformance suite. Runs against the macOS host and the Node mock host.
-conformance:
+conformance: host-macos
 	$(NODE) conformance/run.js
+
+# Build the Swift reference host (the runner needs its binary present).
+host-macos:
+	cd hosts/macos && swift build
 
 # Gate 2 — acceptance gate. Build host + sqlite/update adapters, bundle examples/notes,
 # scripted write/read/quit/relaunch/read-back/signed-update/relaunch (CLAUDE.md).
