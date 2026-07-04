@@ -61,3 +61,14 @@ Note: `update` is not an ordinary adapter. Contract §7.1 (signature verificatio
 - `window.closeRequested` has no timeout.
 - No dynamic adapter loading. No localhost server. No privileged dispatch path for built-ins.
 - `process.spawn` only runs manifest-declared, in-bundle sidecars (§7.2). Default CSP per §7.3; relaxations only via `engawa.json`.
+
+## Autonomous execution
+
+Decide work order, test methodology, and infrastructure design yourself. Record the choice and its rationale in the commit message, and proceed — no prior confirmation.
+
+Stop and ask only when:
+- (a) a normative part of the contract (a MUST / MUST NOT in `spec/`) must be changed or relaxed;
+- (b) a fixed decision (the gate mechanics in this file) would be contradicted;
+- (c) the gate definitions themselves (`make notes` / `make conformance`) need to change.
+
+Otherwise, when in doubt: decide, record it in `spec/` or the commit message, and proceed.
