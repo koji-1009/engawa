@@ -2,6 +2,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } fr
 import { join, resolve } from "node:path";
 import { parseArgs } from "../args.ts";
 import { toolExists, run } from "../exec.ts";
+import { buildHost } from "../host.ts";
 import { CliError, log } from "../log.ts";
 import { appName, readManifest, type Manifest } from "../manifest.ts";
 import { findEngawaHome } from "../paths.ts";
@@ -24,10 +25,8 @@ export async function buildApp(argv: string[], options: BuildOptions = {}): Prom
   const home = findEngawaHome();
   const config = options.dev === true ? "debug" : "release";
 
-  log.step(`building the macOS host (${config})`);
-  await run("swift", ["build", "--package-path", join(home, "hosts", "macos"), "-c", config]);
-  const hostBinary = join(home, "hosts", "macos", ".build", config, "EngawaHost");
-  if (!existsSync(hostBinary)) throw new CliError(`host binary not found at ${hostBinary}`);
+  // Static composition (design.md): a host with only this app's declared adapters.
+  const hostBinary = await buildHost(home, appDir, manifest, config);
 
   const name = appName(manifest);
   const outDir = resolve(flags["out"] ?? join(appDir, "build"));

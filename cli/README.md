@@ -35,13 +35,35 @@ npm link                            # then: engawa <command>
 `engawa.json`:
 
 ```json
-{ "id": "dev.engawa.mynotes", "name": "mynotes", "version": "1.0.0", "sidecars": [] }
+{ "id": "dev.engawa.mynotes", "name": "mynotes", "version": "1.0.0", "adapters": [], "sidecars": [] }
 ```
 
 `app/` holds the assets served from the `app://` origin. Inline `<script>` is dead under the
 default CSP (§7.3) — use external scripts (`<script src="main.js">`). Durable data belongs in
-the `sqlite` adapter or `fs` (§10), never WebView storage. Declared sidecars (§7.2) live in
+`fs` or the `sqlite` adapter (§10), never WebView storage. Declared sidecars (§7.2) live in
 `bin/` and are copied into the bundle.
+
+## Adapters (static composition)
+
+The host is composed **per app** (docs/design.md): every host has the built-in namespaces and
+the contract-coupled `update` adapter, and `build` compiles in **only** the adapters the app
+declares — nothing else is baked in. A scaffolded app declares none (it uses `fs`); an app that
+wants `sqlite` (or any other adapter) declares it:
+
+```json
+"adapters": [
+  { "package": "sqlite", "product": "EngawaSQLite", "register": "SqliteAdapter()", "path": "../../adapters/sqlite" }
+]
+```
+
+- `package` — SwiftPM package identity; `product` — the library to import; `register` — the Swift
+  expression that constructs the adapter.
+- Reference it by **`path`** (relative to the app dir) or by **git**: `"url"` + `"revision"` (a
+  commit hash — the design's distribution unit). Exactly one of the two.
+
+`build` generates a SwiftPM package under `build/.host/` that depends on `EngawaHostCore` plus the
+declared adapters, builds it, and bundles the resulting binary. See `examples/notes` (declares
+`sqlite`) vs `examples/files` (core only).
 
 ## TypeScript
 

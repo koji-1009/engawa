@@ -1,5 +1,13 @@
 {
   "id": "dev.engawa.notes",
   "version": "1.0.0",
+  "adapters": [
+    {
+      "package": "sqlite",
+      "product": "EngawaSQLite",
+      "register": "SqliteAdapter()",
+      "path": "../../adapters/sqlite"
+    }
+  ],
   "sidecars": []
 }

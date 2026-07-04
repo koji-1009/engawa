@@ -1,7 +1,6 @@
 import Cocoa
 import WebKit
 import EngawaKit
-import EngawaSQLite
 import EngawaUpdate
 
 // The macOS reference host. Implements the two protocol primitives — receive a
@@ -47,6 +46,7 @@ final class EngawaHost: NSObject {
     private let autotestUpdate: String   // ENGAWA_AUTOTEST_UPDATE JSON, or "null"
     private let wipeStorage: Bool        // §10: wipe WebView storage at boot, then boot anyway
     private let startURL: URL            // usually app://app/index.html; overridable for §6 tests
+    private let appAdapters: [any Adapter]   // the app's statically-composed adapters (§3)
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -63,8 +63,9 @@ final class EngawaHost: NSObject {
     private var crashCount = 0
     private var crashTimes: [Date] = []             // §10: three crashes in 60 s → error screen
 
-    init(mode: String, env: [String: String]) {
+    init(mode: String, env: [String: String], appAdapters: [any Adapter] = []) {
         self.mode = mode
+        self.appAdapters = appAdapters
 
         // Assets resolve from env (conformance) or, failing that, the .app bundle (a real app).
         let bundleResources = Bundle.main.resourceURL
@@ -138,8 +139,9 @@ final class EngawaHost: NSObject {
         router.register(NotificationAdapter(conformance: mode == "conformance"))
         router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
         router.register(DialogAdapter(conformance: mode == "conformance"))
-        router.register(SqliteAdapter())          // reference adapter (adapters/sqlite)
-        router.register(UpdateAdapter(host: slots)) // contract-coupled adapter (adapters/update)
+        router.register(UpdateAdapter(host: slots)) // contract-coupled adapter (adapters/update), always present
+        // The app's statically-composed adapters (e.g. sqlite) — only what this app declared (§3).
+        for adapter in appAdapters { router.register(adapter) }
         capabilities = router.namespaces
     }
 

@@ -13,32 +13,33 @@ const INDEX_HTML = `<!doctype html>
 <script src="main.js"></script>
 `;
 
-// A minimal notes app over the sqlite adapter — durable data (contract §10). External script
-// only (inline script is dead under the default CSP, §7.3).
+// A minimal notes app backed by the built-in fs namespace — durable data (contract §10), no
+// adapters needed, so it builds and runs out of the box. To use sqlite instead, declare the
+// adapter in engawa.json's "adapters" (see examples/notes). External script only (inline script
+// is dead under the default CSP, §7.3).
 const MAIN_JS = `'use strict';
 (function () {
   var engawa = window.engawa;
-  async function openDB() {
-    var base = await engawa.invoke('path.appData');
-    var db = (await engawa.invoke('sqlite.open', { path: base + '/app.db' })).db;
-    await engawa.invoke('sqlite.execute', { db: db, sql: 'CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY, body TEXT)' });
-    return db;
+  var file;
+  async function load() {
+    if (!file) file = (await engawa.invoke('path.appData')) + '/notes.json';
+    try { return JSON.parse(await engawa.invoke('fs.readTextFile', { path: file })); }
+    catch (e) { return []; }
   }
+  async function save(notes) { await engawa.invoke('fs.writeTextFile', { path: file, contents: JSON.stringify(notes) }); }
   async function render() {
-    var db = await openDB();
-    var rows = (await engawa.invoke('sqlite.query', { db: db, sql: 'SELECT body FROM notes ORDER BY id' })).rows;
-    await engawa.invoke('sqlite.close', { db: db });
+    var notes = await load();
     var ul = document.getElementById('notes');
     ul.textContent = '';
-    rows.forEach(function (r) { var li = document.createElement('li'); li.textContent = r.body; ul.appendChild(li); });
+    notes.forEach(function (n) { var li = document.createElement('li'); li.textContent = n; ul.appendChild(li); });
   }
   document.getElementById('add').addEventListener('submit', async function (ev) {
     ev.preventDefault();
     var body = document.getElementById('body').value.trim();
     if (!body) return;
-    var db = await openDB();
-    await engawa.invoke('sqlite.execute', { db: db, sql: 'INSERT INTO notes(body) VALUES(?)', params: [body] });
-    await engawa.invoke('sqlite.close', { db: db });
+    var notes = await load();
+    notes.push(body);
+    await save(notes);
     document.getElementById('body').value = '';
     render();
   });
@@ -55,7 +56,7 @@ export function cmdNew(argv: string[]): void {
   if (existsSync(dir)) throw new CliError(`${dir} already exists`);
 
   const slug = basename(name).replace(/[^a-z0-9]+/gi, "").toLowerCase() || "app";
-  const manifest = { id: `dev.engawa.${slug}`, name: basename(name), version: "1.0.0", sidecars: [] as string[] };
+  const manifest = { id: `dev.engawa.${slug}`, name: basename(name), version: "1.0.0", adapters: [] as unknown[], sidecars: [] as string[] };
 
   mkdirSync(join(dir, "app"), { recursive: true });
   writeFileSync(join(dir, "engawa.json"), JSON.stringify(manifest, null, 2) + "\n");
