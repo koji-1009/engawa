@@ -83,24 +83,39 @@ function connectMacosHost() {
     });
   }
 
-  const engawa = {
+  const behavior = {
     invoke: (cmd, args) => request({ ctl: 'invoke', cmd, args: args === undefined ? null : args }),
     // §5a PUT-body probe — not part of the shared suite; used by the spike check.
     spike: () => request({ ctl: 'spike' }),
   };
 
-  return ready.then(() => ({
-    name: 'macos',
-    engawa,
-    close: () => new Promise((resolve) => {
+  function makeClose() {
+    return () => new Promise((resolve) => {
       child.on('exit', () => {
         try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* ignore */ }
         resolve();
       });
       send({ ctl: 'quit' });
       setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
-    }),
-  }));
+    });
+  }
+
+  // Mirror the live in-page runtime's read-only surface (§1.1) onto the proxy, so property
+  // checks (capabilities, platform, frozen) test the real engawa rather than the proxy shell.
+  return ready
+    .then(() => request({ ctl: 'introspect' }))
+    .then((surface) => {
+      const engawa = Object.assign({
+        platform: surface.platform,
+        contractVersion: surface.contractVersion,
+        capabilities: surface.capabilities,
+      }, behavior);
+      return {
+        name: 'macos',
+        engawa: surface.frozen ? Object.freeze(engawa) : engawa,
+        close: makeClose(),
+      };
+    });
 }
 
 module.exports = { connectMacosHost };

@@ -143,6 +143,9 @@ final class EngawaHost: NSObject {
                 case "spike":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     DispatchQueue.main.async { [weak self] in self?.runSpike(reqId: reqId) }
+                case "introspect":
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    DispatchQueue.main.async { [weak self] in self?.runIntrospect(reqId: reqId) }
                 case "quit":
                     exit(0)
                 default:
@@ -171,6 +174,22 @@ final class EngawaHost: NSObject {
           } catch(err){
             window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'ETHROW', message:String(err)}});
           }
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // Report the real in-page runtime's read-only surface (contract §1.1) so the driver's
+    // proxy can mirror it faithfully — property checks then test the live engawa, not the proxy.
+    private func runIntrospect(reqId: Int) {
+        let js = """
+        (function(){
+          window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:{
+            frozen: Object.isFrozen(engawa),
+            capabilities: engawa.capabilities,
+            platform: engawa.platform,
+            contractVersion: engawa.contractVersion
+          }});
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)

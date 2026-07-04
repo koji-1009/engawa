@@ -23,13 +23,17 @@ shell.js — the shared runtime library, identical bytes on every host — is in
 
 ### 1.1 Public runtime API (normative)
 
-shell.js exposes the runtime as `globalThis.engawa` — the sole public surface app code uses. It is stable within a contract major version:
+`__shell` is the private host bridge; apps do not touch it. shell.js exposes the public surface as `globalThis.engawa`:
 
-- `engawa.invoke(cmd, args) → Promise` — issues one request. Resolves with the response `value`; rejects with an `Error` whose `.code` is the error frame's `code` (§2) and whose `.message` is its `message`. `args` defaults to `null`.
-- `engawa.on(topic, handler) → unsubscribe` — subscribes to an event topic (§4). Returns a function that removes the subscription; `engawa.off(topic, handler)` is equivalent.
-- `engawa.contractVersion`, `engawa.platform`, `engawa.capabilities` — read-only copies of the handshake fields.
+```js
+engawa.invoke(cmd, args) → Promise      // rejects with { code, message } per §2
+engawa.on(topic, handler) → unsubscribe // event subscription
+engawa.platform                          // "macos" | "windows" | "linux"
+engawa.capabilities                      // frozen array of served namespaces
+engawa.contractVersion
+```
 
-Injection is idempotent: re-running shell.js in a document that already has it (history traversal, double injection per §6) MUST NOT reset pending requests or subscriptions. shell.js signals this to itself via `__shell.__engawaLoaded`.
+Only namespaces present in `capabilities` are invokable; invoking an absent namespace rejects with `ENOTSUP` without a round-trip to the host. The `engawa` object is frozen after injection. Direct use of `__shell` by app code is unsupported and may break within a major version.
 
 ## 2. Wire protocol
 
@@ -117,9 +121,8 @@ Binary never travels the message channel. It rides the scheme handler:
 - **Read:** `fs.openRead(path)` → `{ url: "app://io/<token>" }`; JS fetches a streamed body. Token single-use, expires on completion or 30 s idle.
 - **Write:** `fs.openWrite(path)` → `{ url: "app://io/<token>" }`; JS `fetch(url, { method: "PUT", body })`; the PUT response body carries the result/error frame as JSON.
 - `app://io/*` is reserved; asset serving MUST NOT collide.
-- `app://io` is a **distinct origin** from the app's asset origin (§5). A host MUST attach response headers that let the app page read `app://io` responses — `Access-Control-Allow-Origin` covering the app origin — and MUST answer a CORS preflight (`OPTIONS`) on `app://io` should the engine issue one. Without this the app cannot read the result/error frame the PUT returns.
-
-> Verified (bootstrap stage 2 spike): on the reference engine the PUT request body reaches the scheme handler intact (`URLRequest.httpBody`), so the message channel is never touched for binary. The design.md fallback (chunked POST + session token) is therefore unneeded. The only refinement the spike forced is the CORS requirement above — the app origin and `app://io` differ, so the response must opt the app origin in.
+- **Origin and CORS (normative):** engines differ in whether custom-scheme URLs share an origin. `app://io` responses MUST carry `Access-Control-Allow-Origin` matching the app's `app://` origin (and `Access-Control-Allow-Methods: GET, PUT` on preflight where the engine issues one), so `fetch` from app documents succeeds regardless of the engine's custom-scheme origin policy. `spec/assets.md` defines the exact header set per response class.
+- Spike outcome (recorded): WKURLSchemeHandler PUT request bodies stream correctly on the macOS floor; §5a stands as specified and the chunked-POST fallback is retired.
 
 ## 6. Injection semantics (normative)
 
@@ -129,9 +132,17 @@ Binary never travels the message channel. It rides the scheme handler:
 
 ## 7. Security model
 
-- v1 threat model is remote content, not the app author. Commands are all-on for `app://` pages.
+- v1 threat model is remote content and injected script, not the app author. Commands are available to `app://` pages, subject to §7.2 and §7.3.
 - Any `http(s)://` navigation gets a dead `__shell` (postMessage no-ops). External-origin navigation is denied by default; `shellOpen.openExternal` is the sanctioned path.
 - `fs` paths are NOT sandboxed in v1: the app author is trusted; remote content never reaches commands (§6).
+
+### 7.2 Sidecar allowlist (normative)
+
+`process.spawn` launches only executables declared in the app manifest (`engawa.json`, `sidecars: ["./bin/..."]`) and resolved inside the app bundle. Arbitrary-path execution does not exist in this contract. An undeclared or out-of-bundle target is `EPERM`. The declaration is fixed at app build time, consistent with static composition.
+
+### 7.3 Default CSP (normative)
+
+The host injects a Content-Security-Policy on every `app://` response: `default-src 'app:'; script-src 'app:'` at minimum. Relaxations (e.g. `connect-src` for API calls, `img-src` for remote media) are declared explicitly in `engawa.json` and applied verbatim; there is no silent widening. Inline script is dead by default — conformance asserts it. Host injection of `__shell` and shell.js (§1, §6) uses the engine's native user-script path (e.g. document-start user scripts), which is not subject to the page CSP; the CSP governs document content, not the host's own bridge.
 
 ### 7.1 Update trust model (normative)
 
@@ -172,8 +183,19 @@ Compatibility rule: if the running base satisfies `app.contractRequired` and ser
 
 Mode semantics:
 
-- **app-update:** verified payload unpacks to a fresh directory; the `app://` root switches atomically (rename/symlink); applies at next launch; failure leaves the previous root untouched — rollback is the default state, not a mechanism.
-- **full-update:** the update adapter's obligation ends at "verified installer on disk + `update.readyToInstall` event." Installation executes OS-natively when the app calls `update.install` (host exits into the platform's replace flow: .app swap, installer launch, AppImage replace). The contract specifies everything up to that handoff; nothing after it.
+- **app-update — A/B slots (normative).** The `app://` root is an indirection, not a directory:
+
+```
+<appData>/engawa/
+  slots/{a,b}/     # asset trees; exactly one is live
+  current          # pointer to the live slot (symlink or one-line file)
+  pending          # slot awaiting adoption, if any
+  health           # { bootingSlot, attempts }
+```
+
+  Flow: the verified payload (§7.1) unpacks into the non-live slot → `pending` is written (a single atomic file write — the only commit point; at any crash instant the state is either "pre-update" or "adoption reserved", never in between) → on next launch the host boots the pending slot and increments `health.attempts` → shell.js calls `update.confirmBoot()` once the app has successfully initialized → the host switches `current`, clears `pending` and `health`. If `confirmBoot` does not arrive within 2 launch attempts, the host discards `pending` and boots the previous slot. This makes rollback cover not just interrupted swaps but **verified-yet-broken payloads**: a payload whose signature is valid but whose app fails to boot is automatically abandoned. `update.confirmBoot` is a required command of the `update` namespace; an app that never calls it cannot be updated.
+
+- **full-update:** the update adapter's obligation ends at "verified installer on disk + `update.readyToInstall` event." Installation executes OS-natively when the app calls `update.install` (host exits into the platform's replace flow: .app swap, installer launch, AppImage replace). The contract specifies everything up to that handoff; nothing after it. On the first launch after a base replacement, the host MUST compare its `contractProvided` against the live slot's `contractRequired` and adopt a compatible `pending` app slot first if the live one no longer fits — completing the base-first/app-second ordering at boot.
 
 ## 9. Platform baseline
 

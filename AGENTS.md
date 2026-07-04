@@ -60,3 +60,4 @@ Note: `update` is not an ordinary adapter. Contract §7.1 (signature verificatio
 - One eval per main-loop tick for delivery; batch frames.
 - `window.closeRequested` has no timeout.
 - No dynamic adapter loading. No localhost server. No privileged dispatch path for built-ins.
+- `process.spawn` only runs manifest-declared, in-bundle sidecars (§7.2). Default CSP per §7.3; relaxations only via `engawa.json`.

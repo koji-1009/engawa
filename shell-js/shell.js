@@ -20,6 +20,14 @@
   var nextId = 1;
   var pending = new Map();             // id -> { resolve, reject }
   var listeners = new Map();           // topic -> Set<handler>
+  var capabilities = (shell.capabilities || []).slice();
+  var served = new Set(capabilities);  // namespaces this host serves (§1.1, §3)
+
+  function namespaceOf(cmd) {
+    var s = String(cmd);
+    var i = s.indexOf('.');
+    return i < 0 ? s : s.slice(0, i);
+  }
 
   // Host → JS delivery. The host evaluates `__shell._deliver(<json array of frames>)`.
   // The array is drained in one call; the host batches frames into one eval per tick
@@ -61,7 +69,15 @@
   }
 
   // JS → host request. Returns a promise settled when the matching `res` frame arrives.
+  // A command in an unserved namespace is rejected locally with ENOTSUP — no round-trip
+  // to the host (contract §1.1).
   function invoke(cmd, args) {
+    var ns = namespaceOf(cmd);
+    if (!served.has(ns)) {
+      var nope = new Error('namespace not served: ' + ns);
+      nope.code = 'ENOTSUP';
+      return Promise.reject(nope);
+    }
     var id = nextId++;
     return new Promise(function (resolve, reject) {
       pending.set(id, { resolve: resolve, reject: reject });
@@ -84,12 +100,13 @@
     if (set) set.delete(handler);
   }
 
-  global.engawa = {
+  // The public surface is frozen after injection (contract §1.1).
+  global.engawa = Object.freeze({
     contractVersion: shell.contractVersion,
     platform: shell.platform,
-    capabilities: (shell.capabilities || []).slice(),
+    capabilities: Object.freeze(capabilities),
     invoke: invoke,
     on: on,
     off: off
-  };
+  });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

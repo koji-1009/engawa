@@ -3,5 +3,6 @@
 // harness.test), then export the accumulated list for the runner.
 
 require('./echo.test');
+require('./capabilities.test');
 
 module.exports = require('../harness').tests;
