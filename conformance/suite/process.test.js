@@ -85,10 +85,16 @@
     assertEqual(err.code, 'EPERM', 'code');
   });
 
-  test('process.read on an unknown pid → ESRCH', async function (engawa) {
-    var err = null;
-    try { await engawa.invoke('process.read', { pid: 999999, stream: 'stdout', maxBytes: 16 }); } catch (e) { err = e; }
-    assert(err, 'expected rejection');
-    assertEqual(err.code, 'ESRCH', 'code');
+  test('process.read/stdinWrite/kill on an unknown pid → ESRCH', async function (engawa) {
+    for (const call of [
+      ['process.read', { pid: 999999, stream: 'stdout', maxBytes: 16 }],
+      ['process.stdinWrite', { pid: 999999, data: 'x' }],
+      ['process.kill', { pid: 999999 }],
+    ]) {
+      var err = null;
+      try { await engawa.invoke(call[0], call[1]); } catch (e) { err = e; }
+      assert(err, 'expected rejection from ' + call[0]);
+      assertEqual(err.code, 'ESRCH', call[0] + ' code');
+    }
   });
 })();
