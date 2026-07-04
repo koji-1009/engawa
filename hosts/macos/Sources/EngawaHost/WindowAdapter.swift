@@ -57,6 +57,12 @@ struct WindowAdapter: Adapter {
             _ = await controller.beginClose()
             return .null
 
+        case "__resizeStorm" where conformance:   // fire many resizes in one tick (§2.1 coalescing)
+            let count = Int(obj["count"]?.numberValue ?? 8)
+            let from = obj["from"]?.numberValue ?? 300
+            await controller.resizeStorm(from: from, count: count)
+            return .object(["from": .number(from), "count": .number(Double(count)), "last": .number(from + Double(count - 1))])
+
         default:
             throw AdapterError("ENOSYS", "unknown command: window.\(cmd)")
         }

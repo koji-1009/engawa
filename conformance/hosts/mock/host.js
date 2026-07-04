@@ -163,7 +163,16 @@ function buildHandlers(ctx) {
     'window.getSize': async () => ({ width: win.width, height: win.height }),
     'window.setSize': async (a) => {
       if (!a || typeof a.width !== 'number' || typeof a.height !== 'number') throw err('EINVAL', 'width/height required');
-      win.width = a.width; win.height = a.height; return null;
+      win.width = a.width; win.height = a.height;
+      ctx.emitEvent('window.resize', { width: win.width, height: win.height });
+      return null;
+    },
+    // Conformance hook: fire many resizes in one tick so the suite can observe §2.1 coalescing.
+    'window.__resizeStorm': async (a) => {
+      const count = a && typeof a.count === 'number' ? a.count : 8;
+      const from = a && typeof a.from === 'number' ? a.from : 300;
+      for (let i = 0; i < count; i++) ctx.emitEvent('window.resize', { width: from + i, height: from + i });
+      return { from: from, count: count, last: from + count - 1 };
     },
     'window.setResizable': async (a) => { win.resizable = !!(a && a.resizable); return null; },
     'window.minimize': async () => { win.minimized = true; return null; },
@@ -312,6 +321,16 @@ function err(code, message) {
   return e;
 }
 
+// §2.1: keep only the latest window.resize event in a delivery batch.
+function coalesceResize(frames) {
+  let last = -1;
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].t === 'evt' && frames[i].topic === 'window.resize') last = i;
+  }
+  if (last < 0) return frames;
+  return frames.filter((f, i) => !(f.t === 'evt' && f.topic === 'window.resize' && i !== last));
+}
+
 function reqPath(a) {
   if (!a || typeof a.path !== 'string' || a.path.length === 0) throw err('EINVAL', 'path required');
   return a.path;
@@ -350,7 +369,7 @@ function createMockHost(options = {}) {
     queueMicrotask(() => {
       scheduled = false;
       if (outbound.length === 0) return;
-      const batch = outbound;
+      const batch = coalesceResize(outbound);   // §2.1: latest window.resize per batch only
       outbound = [];
       shell._deliver(JSON.stringify(batch));
     });

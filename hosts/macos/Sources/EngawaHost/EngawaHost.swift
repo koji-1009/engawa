@@ -252,10 +252,21 @@ final class EngawaHost: NSObject {
     private func flush() {
         flushScheduled = false
         if outbound.isEmpty { return }
-        let batch = outbound
+        let batch = Self.coalesceResize(outbound)   // §2.1: latest window.resize per batch only
         outbound.removeAll()
         guard let json = JSON.string(batch) else { return }
         webView.evaluateJavaScript("__shell._deliver(\(JSON.jsStringLiteral(json)));", completionHandler: nil)
+    }
+
+    // §2.1: coalesce high-frequency window.resize events — keep only the latest in a batch.
+    private static func coalesceResize(_ frames: [[String: Any]]) -> [[String: Any]] {
+        func isResize(_ f: [String: Any]) -> Bool {
+            (f["t"] as? String) == "evt" && (f["topic"] as? String) == "window.resize"
+        }
+        var lastResize = -1
+        for (i, f) in frames.enumerated() where isResize(f) { lastResize = i }
+        if lastResize < 0 { return frames }
+        return frames.enumerated().compactMap { i, f in (isResize(f) && i != lastResize) ? nil : f }
     }
 
     // MARK: dispatch

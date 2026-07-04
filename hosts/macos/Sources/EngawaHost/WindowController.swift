@@ -39,6 +39,16 @@ final class WindowController: NSObject, NSWindowDelegate {
         emitter.emit("window.blur", .null)
     }
 
+    func windowDidResize(_ notification: Notification) {
+        let s = window?.contentView?.bounds.size ?? .zero
+        emitter.emit("window.resize", .object(["width": .number(Double(s.width)), "height": .number(Double(s.height))]))
+    }
+
+    // Conformance hook: fire many resizes in one tick so the suite can observe §2.1 coalescing.
+    func resizeStorm(from: Double, count: Int) {
+        for i in 0..<count { window?.setContentSize(NSSize(width: from + Double(i), height: from + Double(i))) }
+    }
+
     // MARK: commands
 
     @discardableResult
