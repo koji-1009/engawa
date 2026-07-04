@@ -53,6 +53,39 @@ function checkEngineFloor(fakeVersion) {
   });
 }
 
+// §10: spawn a host that wipes WebView storage at boot and confirm it still reaches ready.
+function checkStorageWipe() {
+  return new Promise((resolve) => {
+    const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-wipe-'));
+    fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
+    const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-wipedata-'));
+    const c = spawn(HOST_BIN, [], {
+      env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
+             ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_WIPE_STORAGE: '1' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let done = false, b = '';
+    const finish = (r) => {
+      if (done) return; done = true;
+      try { c.kill('SIGKILL'); } catch { /* ignore */ }
+      try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
+      resolve(r);
+    };
+    c.stdout.on('data', (d) => {
+      b += d.toString('utf8');
+      let i;
+      while ((i = b.indexOf('\n')) >= 0) {
+        const line = b.slice(0, i); b = b.slice(i + 1);
+        if (!line.trim()) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.ctl === 'ready') finish({ booted: true });
+      }
+    });
+    setTimeout(() => finish({ booted: false }), 8000);
+  });
+}
+
 function connectMacosHost() {
   if (!fs.existsSync(HOST_BIN)) {
     throw new Error(`macOS host not built: ${HOST_BIN} — run \`swift build\` in hosts/macos (or \`make conformance\`)`);
@@ -176,6 +209,8 @@ function connectMacosHost() {
     frameCheck: () => request({ ctl: 'frameCheck' }),
     // §9 engine floor — spawns a throwaway host with a faked engine version.
     checkEngineFloor: (v) => checkEngineFloor(v),
+    // §10 boot-after-storage-wipe — spawns a host that wipes WebView storage at boot.
+    checkStorageWipe: () => checkStorageWipe(),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
     signFile: (p) => {
       const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();

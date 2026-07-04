@@ -45,6 +45,7 @@ final class EngawaHost: NSObject {
     let ioTokens = IoTokenStore()   // §5a binary I/O tokens, shared with the scheme handler
     let autotest: Bool
     private let autotestUpdate: String   // ENGAWA_AUTOTEST_UPDATE JSON, or "null"
+    private let wipeStorage: Bool        // §10: wipe WebView storage at boot, then boot anyway
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -103,6 +104,7 @@ final class EngawaHost: NSObject {
         self.schemeHandler = AppSchemeHandler(rootProvider: { slots.liveSlotDir() }, ioTokens: ioTokens)
         self.autotest = env["ENGAWA_AUTOTEST"] == "1"
         self.autotestUpdate = env["ENGAWA_AUTOTEST_UPDATE"] ?? "null"
+        self.wipeStorage = env["ENGAWA_WIPE_STORAGE"] == "1"
         super.init()
     }
 
@@ -181,7 +183,17 @@ final class EngawaHost: NSObject {
             w.center()
             w.makeKeyAndOrderFront(nil)
         }
-        webView.load(URLRequest(url: URL(string: "app://app/index.html")!))
+        // §10: WebView-managed storage is cache. Wiping it must not stop the app from booting —
+        // durable data lives in fs/sqlite, not IndexedDB/localStorage/caches.
+        let start = URLRequest(url: URL(string: "app://app/index.html")!)
+        if wipeStorage {
+            WKWebsiteDataStore.default().removeData(
+                ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                modifiedSince: Date(timeIntervalSince1970: 0)
+            ) { [weak self] in self?.webView.load(start) }
+        } else {
+            webView.load(start)
+        }
     }
 
     // §9: engine below the floor. No app, no __shell — a spec'd error screen (or, under
