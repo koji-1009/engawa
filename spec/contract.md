@@ -88,7 +88,7 @@ Built-in namespaces (§4) are adapters that ship in-tree. There is no privileged
 
 | Namespace | Commands |
 |-----------|----------|
-| `window` | `setTitle`, `setSize`, `getSize`, `minimize`, `maximize`, `close`, `setResizable`, `respondToClose` |
+| `window` | `setTitle`, `setSize`, `getSize`, `minimize`, `maximize`, `close`, `setResizable`, `setCloseHandler`, `respondToClose` |
 | `dialog` | `open`, `save`, `message` |
 | `fs` | `readTextFile`, `writeTextFile`, `exists`, `mkdir`, `remove`, `readDir`, `stat` — text only; binary via §5a |
 | `path` | `appData`, `appConfig`, `appCache`, `home`, `temp` |
@@ -108,7 +108,7 @@ Streams are pull: `process.readable` signals data availability (coalesced, no pa
 
 ### 4.2 `window.closeRequested` (normative)
 
-On a user close attempt the host emits `window.closeRequested` with `payload: { token }` and waits **indefinitely**. JS answers through the ordinary request path: `window.respondToClose(token, allow)` — no special frame type exists for event replies. An unknown or already-consumed token is `EINVAL`. No timeout: the canonical use is an unsaved-changes dialog, and a timeout converts a slow user decision into data loss. A hung page is the OS's problem (repeated close, force quit). Hosts MUST NOT invent a deadline.
+Close interception is **opt-in**. By default a user close attempt closes the window — an app that never asks to intervene is always closable. An app that must intervene (the canonical case is an unsaved-changes prompt) calls `window.setCloseHandler(true)` first. Only then does a user close attempt emit `window.closeRequested` with `payload: { token }` and wait **indefinitely** instead of closing; JS answers through the ordinary request path: `window.respondToClose(token, allow)` — no special frame type exists for event replies. An unknown or already-consumed token is `EINVAL`. No timeout on the wait: a timeout converts a slow user decision into data loss, and a hung page is the OS's problem (repeated close, force quit) — hosts MUST NOT invent a deadline. `window.setCloseHandler(false)` returns the window to the default (always-close) behavior.
 
 ## 5. Asset serving
 

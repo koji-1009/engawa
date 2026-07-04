@@ -45,6 +45,11 @@ struct WindowAdapter: Adapter {
             await controller.close()
             return .null
 
+        case "setCloseHandler":
+            let enabled = obj["enabled"]?.boolValue ?? false
+            await controller.setCloseHandler(enabled)
+            return .null
+
         case "respondToClose":
             guard let token = obj["token"]?.numberValue else {
                 throw AdapterError("EINVAL", "token required")
@@ -54,8 +59,8 @@ struct WindowAdapter: Adapter {
             return .null
 
         case "requestClose" where conformance:
-            _ = await controller.beginClose()
-            return .null
+            let deferred = await controller.requestCloseForTest()
+            return .object(["deferred": .bool(deferred)])
 
         case "__resizeStorm" where conformance:   // fire many resizes in one tick (§2.1 coalescing)
             let count = Int(obj["count"]?.numberValue ?? 8)

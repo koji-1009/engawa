@@ -1,9 +1,10 @@
 import Cocoa
 import EngawaKit
 
-// Owns the NSWindow and the close protocol (contract §4.2). A user close attempt does
-// not close the window; it emits window.closeRequested with a token and waits — the app
-// answers via window.respondToClose(token, allow). No timeout (§4.2).
+// Owns the NSWindow and the close protocol (contract §4.2). By default a user close closes
+// the window. An app that must intervene (e.g. unsaved changes) opts in with
+// window.setCloseHandler(true); thereafter a close attempt emits window.closeRequested with a
+// token and waits — the app answers via window.respondToClose(token, allow). No timeout (§4.2).
 //
 // AppKit is main-thread only, so the whole controller is main-actor isolated; the adapter
 // awaits into it and NSWindowDelegate callbacks already arrive on main.
@@ -14,6 +15,7 @@ final class WindowController: NSObject, NSWindowDelegate {
     private var pendingCloseTokens: Set<Int> = []
     private var tokenSeq = 0
     private var emittedFocusEvents = false
+    private var interceptClose = false   // §4.2: false → close on the button; true → defer to the app
 
     init(emitter: EventEmitter) {
         self.emitter = emitter
@@ -27,8 +29,9 @@ final class WindowController: NSObject, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard interceptClose else { return true }   // §4.2 default: just close
         beginClose()
-        return false   // defer to the app; close only on respondToClose(allow: true)
+        return false   // opted in: defer to the app; close only on respondToClose(allow: true)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -51,6 +54,8 @@ final class WindowController: NSObject, NSWindowDelegate {
 
     // MARK: commands
 
+    func setCloseHandler(_ enabled: Bool) { interceptClose = enabled }
+
     @discardableResult
     func beginClose() -> Int {
         tokenSeq += 1
@@ -58,6 +63,14 @@ final class WindowController: NSObject, NSWindowDelegate {
         pendingCloseTokens.insert(token)
         emitter.emit("window.closeRequested", .object(["token": .number(Double(token))]))
         return token
+    }
+
+    // Conformance hook: simulate a user close attempt through the §4.2 gate. Returns whether it
+    // was deferred (intercepted) rather than closed; never destroys the off-screen suite window.
+    func requestCloseForTest() -> Bool {
+        guard interceptClose else { return false }
+        beginClose()
+        return true
     }
 
     func setTitle(_ title: String) { window?.title = title }

@@ -60,11 +60,24 @@
     assertEqual(events[events.length - 1].width, r.last, 'the latest size survives coalescing');
   });
 
-  test('close protocol: closeRequested carries a token; respondToClose consumes it once', async function (engawa) {
+  test('§4.2 by default a close is NOT intercepted (no closeRequested; the window just closes)', async function (engawa) {
+    var events = [];
+    var off = engawa.on('window.closeRequested', function (p) { events.push(p); });
+    await engawa.invoke('window.setCloseHandler', { enabled: false });
+    var r = await engawa.invoke('window.requestClose');
+    await delay(150);
+    off();
+    assertEqual(r.deferred, false, 'a close with no handler is not deferred');
+    assertEqual(events.length, 0, 'no closeRequested is emitted when the app has not opted in');
+  });
+
+  test('close protocol: after setCloseHandler(true), closeRequested carries a token; respondToClose consumes it once', async function (engawa) {
     var events = [];
     var off = engawa.on('window.closeRequested', function (p) { events.push(p); });
 
-    await engawa.invoke('window.requestClose');
+    await engawa.invoke('window.setCloseHandler', { enabled: true });   // §4.2 opt in
+    var r = await engawa.invoke('window.requestClose');
+    assertEqual(r.deferred, true, 'an opted-in close is deferred to the app');
     await waitFor(function () { return events.length > 0; }, 3000);
     off();
 

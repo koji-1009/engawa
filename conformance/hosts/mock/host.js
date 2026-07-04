@@ -47,6 +47,7 @@ function buildHandlers(ctx) {
   const win = { width: 1024, height: 720, title: 'Engawa', resizable: true, minimized: false, maximized: false };
   const closeTokens = new Set();
   let tokenSeq = 0;
+  let interceptClose = false;   // §4.2: false → close on the button; true → defer to the app
 
   const shellOpenRecorded = [];
   const notificationsRecorded = [];
@@ -178,19 +179,22 @@ function buildHandlers(ctx) {
     'window.minimize': async () => { win.minimized = true; return null; },
     'window.maximize': async () => { win.maximized = true; return null; },
     'window.close': async () => null,   // mock has no real window to destroy
+    'window.setCloseHandler': async (a) => { interceptClose = !!(a && a.enabled); return null; },
     'window.respondToClose': async (a) => {
       const token = a && a.token;
       if (typeof token !== 'number' || !closeTokens.has(token)) throw err('EINVAL', 'unknown or consumed close token');
       closeTokens.delete(token);
       return null;
     },
-    // Conformance testability hook (spec/commands/window.md): simulate a user close attempt.
+    // Conformance testability hook (spec/commands/window.md): simulate a user close attempt
+    // through the §4.2 gate — deferred (closeRequested) only if the app opted in.
     'window.requestClose': async () => {
+      if (!interceptClose) return { deferred: false };
       tokenSeq += 1;
       const token = tokenSeq;
       closeTokens.add(token);
       ctx.emitEvent('window.closeRequested', { token });
-      return null;
+      return { deferred: true };
     },
 
     // shellOpen (spec/commands/shellOpen.md) — record-only (the mock has no OS to hand off to)
