@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { StringDecoder } = require('string_decoder');
 
 const REPO = path.join(__dirname, '..', '..', '..');
 const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHost');
@@ -57,9 +58,12 @@ function connectMacosHost() {
   let markReady;
   const ready = new Promise((res) => { markReady = res; });
 
+  // StringDecoder buffers a multibyte UTF-8 sequence split across stdout chunks; a naive
+  // chunk.toString('utf8') would corrupt it at the boundary (surfaced by the 1 MiB unicode test).
   let buf = '';
+  const decoder = new StringDecoder('utf8');
   child.stdout.on('data', (chunk) => {
-    buf += chunk.toString('utf8');
+    buf += decoder.write(chunk);
     let idx;
     while ((idx = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, idx);
