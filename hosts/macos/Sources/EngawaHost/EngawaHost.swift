@@ -56,6 +56,11 @@ final class EngawaHost: NSObject {
     private var outbound: [[String: Any]] = []
     private var flushScheduled = false
 
+    private var hostEmitter: EventEmitter?          // for app-mode event emission (e.g. renderCrashed)
+    private var stdinReaderStarted = false          // reload re-fires didFinish; start the reader once
+    private var crashCount = 0
+    private var crashTimes: [Date] = []             // §10: three crashes in 60 s → error screen
+
     init(mode: String, env: [String: String]) {
         self.mode = mode
 
@@ -109,6 +114,7 @@ final class EngawaHost: NSObject {
             Task { @MainActor in self?.emitEvent(topic: topic, payload: payload) }
         }
         router = Router(emitter: emitter)
+        hostEmitter = emitter
         router.register(EchoAdapter())
         router.register(PathAdapter(dirs: dirs))
         router.register(FsAdapter(ioTokens: ioTokens))
@@ -294,6 +300,9 @@ final class EngawaHost: NSObject {
     // MARK: conformance control bridge (mode == "conformance")
 
     private func conformanceReady() {
+        // didFinish re-fires on reload (e.g. crash recovery); start the stdin reader only once.
+        if stdinReaderStarted { return }
+        stdinReaderStarted = true
         Out.line(["ctl": "ready", "platform": "macos"])
         startStdinReader()
     }
@@ -460,6 +469,32 @@ extension EngawaHost: WKScriptMessageHandler {
 extension EngawaHost: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if mode == "conformance" { conformanceReady() }
+    }
+
+    // §10 renderer crash recovery: reload on renderer death and signal app.renderCrashed with a
+    // crash counter. Three crashes in 60 s → spec'd error screen instead of a reload loop.
+    // (Fires on real renderer crashes; a synthetic trigger for the offscreen conformance host
+    // isn't reliable on this engine — WebKit does not fire this for _killWebContentProcess when
+    // the renderer is suspended — so this recovery path is not yet exercised by the suite.)
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        crashTimes.append(now)
+        crashTimes = crashTimes.filter { now.timeIntervalSince($0) < 60 }
+        crashCount += 1
+
+        // Emit the signal. In conformance the crash destroyed the in-page subscription, so
+        // report on the control channel directly; in app mode use the normal event path.
+        if mode == "conformance" {
+            Out.line(["ctl": "event", "topic": "app.renderCrashed", "payload": ["count": crashCount]])
+        } else {
+            hostEmitter?.emit("app.renderCrashed", .object(["count": .number(Double(crashCount))]))
+        }
+
+        if crashTimes.count >= 3 {
+            webView.loadHTMLString("<!doctype html><meta charset=\"utf-8\"><title>Engawa</title><h1>The app keeps crashing</h1>", baseURL: nil)
+        } else {
+            webView.reload()
+        }
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Out.err("navigation failed: \(error.localizedDescription)")
