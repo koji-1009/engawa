@@ -5,6 +5,7 @@ import EngawaKit
 // Not sandboxed in v1 (§7): paths are used as given.
 struct FsAdapter: Adapter {
     let namespace = "fs"
+    let ioTokens: IoTokenStore
     private var fm: FileManager { .default }   // computed: keep the struct Sendable
 
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue {
@@ -29,6 +30,23 @@ struct FsAdapter: Adapter {
             }
             do { try contents.write(toFile: p, atomically: true, encoding: .utf8); return .null }
             catch { throw AdapterError("EIO", error.localizedDescription) }
+
+        case "openWrite":
+            // §5a: binary write rides the app://io channel, never the message channel.
+            let p = try path(obj)
+            let parent = (p as NSString).deletingLastPathComponent
+            var parentIsDir: ObjCBool = false
+            guard fm.fileExists(atPath: parent, isDirectory: &parentIsDir), parentIsDir.boolValue else {
+                throw AdapterError("ENOENT", "parent directory does not exist: \(parent)")
+            }
+            return .object(["url": .string("app://io/\(ioTokens.mint(path: p, mode: .write))")])
+
+        case "openRead":
+            let p = try path(obj)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: p, isDirectory: &isDir) else { throw AdapterError("ENOENT", "no such file: \(p)") }
+            if isDir.boolValue { throw AdapterError("EISDIR", "is a directory: \(p)") }
+            return .object(["url": .string("app://io/\(ioTokens.mint(path: p, mode: .read))")])
 
         case "exists":
             return .bool(fm.fileExists(atPath: try path(obj)))

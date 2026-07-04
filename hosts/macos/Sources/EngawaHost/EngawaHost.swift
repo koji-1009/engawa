@@ -24,6 +24,7 @@ final class EngawaHost: NSObject {
     let appVersion: String
     let manifest: Manifest?
     let slots: SlotManager
+    let ioTokens = IoTokenStore()   // §5a binary I/O tokens, shared with the scheme handler
     let autotest: Bool
     private let autotestUpdate: String   // ENGAWA_AUTOTEST_UPDATE JSON, or "null"
 
@@ -75,7 +76,7 @@ final class EngawaHost: NSObject {
             .appendingPathComponent("engawa")
         let slots = SlotManager(base: slotsBase, seed: seed, trustRootB64: trustRoot)
         self.slots = slots
-        self.schemeHandler = AppSchemeHandler(rootProvider: { slots.liveSlotDir() })
+        self.schemeHandler = AppSchemeHandler(rootProvider: { slots.liveSlotDir() }, ioTokens: ioTokens)
         self.autotest = env["ENGAWA_AUTOTEST"] == "1"
         self.autotestUpdate = env["ENGAWA_AUTOTEST_UPDATE"] ?? "null"
         super.init()
@@ -91,7 +92,7 @@ final class EngawaHost: NSObject {
         router = Router(emitter: emitter)
         router.register(EchoAdapter())
         router.register(PathAdapter(dirs: dirs))
-        router.register(FsAdapter())
+        router.register(FsAdapter(ioTokens: ioTokens))
         router.register(AppAdapter(appVersion: appVersion,
                                    hostVersion: Self.hostVersion,
                                    contractVersion: Self.contractVersion,
@@ -264,9 +265,15 @@ final class EngawaHost: NSObject {
                     // Serialize args here (Sendable String) rather than capture a non-Sendable Any.
                     let argsJSON = JSON.string(ctl["args"] ?? NSNull()) ?? "null"
                     Task { @MainActor [weak self] in self?.runInvoke(reqId: reqId, cmd: cmd, argsJSON: argsJSON) }
-                case "spike":
+                case "ioPut":
                     let reqId = ctl["reqId"] as? Int ?? -1
-                    Task { @MainActor [weak self] in self?.runSpike(reqId: reqId) }
+                    let url = ctl["url"] as? String ?? ""
+                    let dataB64 = ctl["dataB64"] as? String ?? ""
+                    Task { @MainActor [weak self] in self?.runIoPut(reqId: reqId, url: url, dataB64: dataB64) }
+                case "ioGet":
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    let url = ctl["url"] as? String ?? ""
+                    Task { @MainActor [weak self] in self?.runIoGet(reqId: reqId, url: url) }
                 case "introspect":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     Task { @MainActor [weak self] in self?.runIntrospect(reqId: reqId) }
@@ -338,16 +345,34 @@ final class EngawaHost: NSObject {
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    // §5a spike: does a fetch() PUT body reach the scheme handler on this engine?
-    // Runs in-page (real fetch → real WKURLSchemeHandler) and reports the handler's
-    // findings back through the control channel.
-    private func runSpike(reqId: Int) {
+    // §5a binary I/O is an in-page fetch to app://io; the runner drives via the proxy, so the
+    // host performs the fetch in-page and relays the outcome. Data crosses the control channel
+    // base64-encoded (the control channel is not the message channel).
+    private func runIoPut(reqId: Int, url: String, dataB64: String) {
         let js = """
         (function(){
-          var payload = new TextEncoder().encode('えんがわ-🌇-PUT-body-\\u2028-tail');
-          fetch('app://io/spike', { method:'PUT', body: payload })
+          var bin = atob(\(JSON.jsStringLiteral(dataB64)));
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          fetch(\(JSON.jsStringLiteral(url)), { method:'PUT', body: bytes })
             .then(function(r){ return r.json(); })
-            .then(function(j){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:j, sentLen:payload.length}); })
+            .then(function(j){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:j}); })
+            .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EFETCH', message:String((e&&e.message)||e)}}); });
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func runIoGet(reqId: Int, url: String) {
+        let js = """
+        (function(){
+          fetch(\(JSON.jsStringLiteral(url)))
+            .then(function(r){ return r.arrayBuffer(); })
+            .then(function(buf){
+              var bytes = new Uint8Array(buf), bin = '', CH = 0x8000;
+              for (var i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+              window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:{ base64: btoa(bin), len: bytes.length }});
+            })
             .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EFETCH', message:String((e&&e.message)||e)}}); });
         })();
         """

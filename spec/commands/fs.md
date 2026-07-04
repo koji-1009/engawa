@@ -16,6 +16,11 @@ Every command takes an object with at least `path`. A missing/empty `path` is `E
 | `fs.remove` | `{ path, recursive? }` | `null` | Removes a file or directory. `ENOENT` if absent. A non-empty directory without `recursive` → `ENOTEMPTY`. |
 | `fs.readDir` | `{ path }` | `[{ name, isDirectory }]` | Directory entries (order unspecified). `ENOTDIR` if `path` is not a directory. |
 | `fs.stat` | `{ path }` | `{ type, size, modified }` | `type` is `"file"` or `"directory"`; `size` in bytes; `modified` in epoch milliseconds. |
+| `fs.openWrite` | `{ path }` | `{ url }` | Binary write (contract §5a). Returns an `app://io/<token>` URL; JS `fetch(url, { method: "PUT", body })` streams the bytes, the PUT response carries the result/error frame. Parent must exist (`ENOENT`). |
+| `fs.openRead` | `{ path }` | `{ url }` | Binary read (§5a). Returns an `app://io/<token>` URL; JS `fetch(url)` streams the body. `ENOENT`/`EISDIR` as `readTextFile`. |
+
+Binary (`openRead`/`openWrite`) never travels the message channel — it rides the `app://io`
+scheme handler (contract §5a). Tokens are single-use and expire after 30 s idle.
 
 Normative:
 

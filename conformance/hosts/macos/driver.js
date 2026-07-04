@@ -126,8 +126,10 @@ function connectMacosHost() {
     invoke: (cmd, args) => request({ ctl: 'invoke', cmd, args: args === undefined ? null : args }),
     on,
     off: (topic, handler) => { const set = eventHandlers.get(topic); if (set) set.delete(handler); },
-    // §5a PUT-body probe — not part of the shared suite; used by the spike check.
-    spike: () => request({ ctl: 'spike' }),
+    // §5a binary I/O: the fetch to app://io happens in-page; the runner drives it via these.
+    // Data crosses the control channel base64-encoded (never the message channel).
+    ioPut: (url, buf) => request({ ctl: 'ioPut', url, dataB64: Buffer.from(buf).toString('base64') }),
+    ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
     signFile: (p) => {
       const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();

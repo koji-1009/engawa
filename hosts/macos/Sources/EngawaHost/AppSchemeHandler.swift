@@ -11,9 +11,11 @@ import WebKit
 final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
     // Resolves the live asset root per request — it is the live A/B slot (§8), not a fixed dir.
     private let rootProvider: @Sendable () -> URL?
+    private let ioTokens: IoTokenStore
 
-    init(rootProvider: @escaping @Sendable () -> URL?) {
+    init(rootProvider: @escaping @Sendable () -> URL?, ioTokens: IoTokenStore) {
         self.rootProvider = rootProvider
+        self.ioTokens = ioTokens
     }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -32,51 +34,55 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
         // Nothing long-running yet; slice responses complete synchronously.
     }
 
-    // MARK: app://io — the §5a spike
+    // MARK: app://io — the binary I/O channel (§5a)
 
     private func handleIO(_ task: WKURLSchemeTask) {
         let req = task.request
         let method = req.httpMethod ?? "GET"
-        Out.err("app://io \(method) \(req.url?.absoluteString ?? "")")
-        if method == "OPTIONS" {
-            // CORS preflight probe.
+
+        if method == "OPTIONS" {   // CORS preflight
             respondData(task, Data(), mime: "text/plain", status: 204, cors: true)
             return
         }
-        guard method == "PUT" else {
-            // GET (openRead) is exercised in stage 4; the slice only probes PUT.
-            respondJSON(task, ["error": "io GET not implemented in slice"], status: 501)
+
+        let token = req.url?.lastPathComponent ?? ""
+        guard let entry = ioTokens.take(token) else {
+            respondJSON(task, ["ok": false, "err": ["code": "EINVAL", "message": "invalid or expired io token"]], status: 200, cors: true)
             return
         }
 
-        var delivered = false
-        var mechanism = "none"
-        var bytes = Data()
-
-        if let body = req.httpBody {
-            delivered = true
-            mechanism = "httpBody"
-            bytes = body
-        } else if let stream = req.httpBodyStream {
-            mechanism = "httpBodyStream"
-            stream.open()
-            defer { stream.close() }
-            let bufSize = 65536
-            var buffer = [UInt8](repeating: 0, count: bufSize)
-            while stream.hasBytesAvailable {
-                let n = stream.read(&buffer, maxLength: bufSize)
-                if n > 0 { bytes.append(buffer, count: n); delivered = true } else { break }
+        switch (method, entry.mode) {
+        case ("PUT", .write):
+            let bytes = requestBody(req)
+            do {
+                try bytes.write(to: URL(fileURLWithPath: entry.path))
+                respondJSON(task, ["ok": true, "value": ["bytesWritten": bytes.count]], status: 200, cors: true)
+            } catch {
+                respondJSON(task, ["ok": false, "err": ["code": "EIO", "message": error.localizedDescription]], status: 200, cors: true)
             }
+        case ("GET", .read):
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: entry.path)) else {
+                respondJSON(task, ["ok": false, "err": ["code": "EIO", "message": "read failed"]], status: 200, cors: true)
+                return
+            }
+            respondData(task, data, mime: "application/octet-stream", status: 200, cors: true)
+        default:
+            respondJSON(task, ["ok": false, "err": ["code": "EINVAL", "message": "method/mode mismatch"]], status: 200, cors: true)
         }
+    }
 
-        let text = String(data: bytes, encoding: .utf8)
-        Out.err("app://io PUT: delivered=\(delivered) mechanism=\(mechanism) len=\(bytes.count)")
-        respondJSON(task, [
-            "delivered": delivered,
-            "mechanism": mechanism,
-            "len": bytes.count,
-            "text": text ?? NSNull(),
-        ], status: 200, cors: true)
+    private func requestBody(_ req: URLRequest) -> Data {
+        if let body = req.httpBody { return body }
+        guard let stream = req.httpBodyStream else { return Data() }
+        stream.open(); defer { stream.close() }
+        var bytes = Data()
+        let bufSize = 1 << 16
+        var buffer = [UInt8](repeating: 0, count: bufSize)
+        while stream.hasBytesAvailable {
+            let n = stream.read(&buffer, maxLength: bufSize)
+            if n > 0 { bytes.append(buffer, count: n) } else { break }
+        }
+        return bytes
     }
 
     // MARK: app assets

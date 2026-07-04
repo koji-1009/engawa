@@ -8,6 +8,7 @@ require('./csp.test');
 require('./limits.test');
 require('./path.test');
 require('./fs.test');
+require('./binaryio.test');
 require('./app.test');
 require('./clipboard.test');
 require('./window.test');
