@@ -71,6 +71,35 @@
     await engawa.invoke('fs.remove', { path: dir, recursive: true });
   });
 
+  test('fs.readTextFile on a directory rejects EISDIR', async function (engawa) {
+    var dir = await scratchDir(engawa);
+    var err = null;
+    try { await engawa.invoke('fs.readTextFile', { path: dir }); } catch (e) { err = e; }
+    assert(err, 'expected rejection');
+    assertEqual(err.code, 'EISDIR', 'code');
+    await engawa.invoke('fs.remove', { path: dir, recursive: true });
+  });
+
+  test('fs.readDir on a file rejects ENOTDIR', async function (engawa) {
+    var dir = await scratchDir(engawa);
+    var file = dir + '/a.txt';
+    await engawa.invoke('fs.writeTextFile', { path: file, contents: 'x' });
+    var err = null;
+    try { await engawa.invoke('fs.readDir', { path: file }); } catch (e) { err = e; }
+    assert(err, 'expected rejection');
+    assertEqual(err.code, 'ENOTDIR', 'code');
+    await engawa.invoke('fs.remove', { path: dir, recursive: true });
+  });
+
+  test('fs.writeTextFile without contents rejects EINVAL', async function (engawa) {
+    var dir = await scratchDir(engawa);
+    var err = null;
+    try { await engawa.invoke('fs.writeTextFile', { path: dir + '/x.txt' }); } catch (e) { err = e; }
+    assert(err, 'expected rejection');
+    assertEqual(err.code, 'EINVAL', 'code');
+    await engawa.invoke('fs.remove', { path: dir, recursive: true });
+  });
+
   test('fs.readDir lists created entries with isDirectory flags', async function (engawa) {
     var dir = await scratchDir(engawa);
     await engawa.invoke('fs.writeTextFile', { path: dir + '/file.txt', contents: 'x' });
