@@ -3,7 +3,7 @@ import Foundation
 // The typed JSON value that crosses the adapter boundary (contract §3).
 // Numbers are IEEE doubles — the same representation JS uses — so a value that
 // round-trips through an adapter is bit-identical to what the page sent.
-indirect enum JSONValue {
+public indirect enum JSONValue {
     case null
     case bool(Bool)
     case number(Double)
@@ -12,7 +12,7 @@ indirect enum JSONValue {
     case object([String: JSONValue])
 
     /// Build from a Foundation graph (as produced by JSONSerialization of the wire).
-    static func from(_ any: Any?) -> JSONValue {
+    public static func from(_ any: Any?) -> JSONValue {
         guard let any = any, !(any is NSNull) else { return .null }
         if let n = any as? NSNumber {
             // A boolean NSNumber must not collapse into a number.
@@ -30,7 +30,7 @@ indirect enum JSONValue {
     }
 
     /// Lower to a Foundation graph for serialization back onto the wire.
-    func toFoundation() -> Any {
+    public func toFoundation() -> Any {
         switch self {
         case .null:
             return NSNull()
@@ -52,9 +52,9 @@ indirect enum JSONValue {
     }
 
     // Convenience accessors for adapter code.
-    var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o }; return nil }
-    var stringValue: String? { if case .string(let s) = self { return s }; return nil }
-    var numberValue: Double? { if case .number(let d) = self { return d }; return nil }
-    var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
-    var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
+    public var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o }; return nil }
+    public var stringValue: String? { if case .string(let s) = self { return s }; return nil }
+    public var numberValue: Double? { if case .number(let d) = self { return d }; return nil }
+    public var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
+    public var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
 }

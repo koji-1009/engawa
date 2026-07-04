@@ -1,4 +1,5 @@
 import Cocoa
+import EngawaKit
 
 // The `dialog` namespace (spec/commands/dialog.md). Under conformance the host presents no UI
 // and returns a preprogrammed response (dialog.__setResponse); in app mode it drives real

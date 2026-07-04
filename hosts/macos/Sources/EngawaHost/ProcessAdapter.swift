@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // The `process` namespace (spec/commands/process.md). Pull streams (§4.1): the host buffers
 // per stream, signals process.readable when a drained buffer goes non-empty, and drains via

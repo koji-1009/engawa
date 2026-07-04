@@ -1,4 +1,5 @@
 import Cocoa
+import EngawaKit
 
 // The `shellOpen` namespace (spec/commands/shellOpen.md). Under conformance it records
 // requests instead of performing them (the OS side effect is unobservable and unwanted in

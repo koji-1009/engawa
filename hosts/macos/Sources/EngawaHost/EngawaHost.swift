@@ -1,5 +1,6 @@
 import Cocoa
 import WebKit
+import EngawaKit
 
 // The macOS reference host. Implements the two protocol primitives — receive a
 // string (`engawa` message handler) and evaluate a string (`__shell._deliver`) —

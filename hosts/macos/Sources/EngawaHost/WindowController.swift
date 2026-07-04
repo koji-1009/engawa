@@ -1,4 +1,5 @@
 import Cocoa
+import EngawaKit
 
 // Owns the NSWindow and the close protocol (contract §4.2). A user close attempt does
 // not close the window; it emits window.closeRequested with a token and waits — the app

@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // Resolved standard directories for the running app (spec/commands/path.md).
 // Under ENGAWA_DATA_ROOT (conformance / isolated runs) everything nests in one root;

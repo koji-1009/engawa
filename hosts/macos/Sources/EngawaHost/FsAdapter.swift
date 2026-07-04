@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // The `fs` namespace (spec/commands/fs.md). Text only; binary rides app://io (§5a).
 // Not sandboxed in v1 (§7): paths are used as given.

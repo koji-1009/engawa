@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // The `window` namespace (spec/commands/window.md). Thin routing over WindowController;
 // all AppKit work hops to the main actor. `requestClose` is a conformance-only testability

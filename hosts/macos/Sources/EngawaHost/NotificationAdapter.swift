@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // The `notification` namespace (spec/commands/notification.md). Under conformance it records
 // requests and exposes them via `notification.__recorded`. Real delivery needs a bundled app

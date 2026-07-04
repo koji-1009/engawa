@@ -1,4 +1,5 @@
 import Foundation
+import EngawaKit
 
 // The vertical-slice fixture, now an in-tree adapter like any other (bootstrap stage 3).
 // It echoes its arguments, proving the router carries a real namespace with no privileged

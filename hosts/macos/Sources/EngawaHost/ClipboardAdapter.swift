@@ -1,4 +1,5 @@
 import Cocoa
+import EngawaKit
 
 // The `clipboard` namespace (spec/commands/clipboard.md). In conformance mode the host
 // hands us a private, named pasteboard so the suite never disturbs the user's clipboard;

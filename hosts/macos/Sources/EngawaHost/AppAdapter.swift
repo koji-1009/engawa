@@ -1,4 +1,5 @@
 import Cocoa
+import EngawaKit
 
 // The `app` namespace (spec/commands/app.md): identity, engine info, lifecycle.
 struct AppAdapter: Adapter {
