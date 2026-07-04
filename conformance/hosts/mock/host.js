@@ -25,6 +25,9 @@ function buildHandlers(ctx) {
   const closeTokens = new Set();
   let tokenSeq = 0;
 
+  const shellOpenRecorded = [];
+  const notificationsRecorded = [];
+
   return {
     echo: async (args) => args,
 
@@ -130,6 +133,19 @@ function buildHandlers(ctx) {
       ctx.emitEvent('window.closeRequested', { token });
       return null;
     },
+
+    // shellOpen (spec/commands/shellOpen.md) — record-only (the mock has no OS to hand off to)
+    'shellOpen.openExternal': async (a) => {
+      if (!a || typeof a.url !== 'string' || !a.url) throw err('EINVAL', 'url required');
+      shellOpenRecorded.push({ action: 'openExternal', url: a.url });
+      return null;
+    },
+    'shellOpen.revealInFolder': async (a) => {
+      if (!a || typeof a.path !== 'string' || !a.path) throw err('EINVAL', 'path required');
+      shellOpenRecorded.push({ action: 'revealInFolder', path: a.path });
+      return null;
+    },
+    'shellOpen.__recorded': async () => shellOpenRecorded.slice(),
   };
 }
 

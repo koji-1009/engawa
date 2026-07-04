@@ -9,5 +9,6 @@ require('./fs.test');
 require('./app.test');
 require('./clipboard.test');
 require('./window.test');
+require('./shellOpen.test');
 
 module.exports = require('../harness').tests;

@@ -62,6 +62,7 @@ final class EngawaHost: NSObject {
         router.register(ClipboardAdapter(pasteboard: pasteboard))
         windowController = WindowController(emitter: emitter)
         router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
+        router.register(ShellOpenAdapter(conformance: mode == "conformance"))
         capabilities = router.namespaces
     }
 
