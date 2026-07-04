@@ -3,18 +3,19 @@ import WebKit
 
 // The macOS reference host. Implements the two protocol primitives — receive a
 // string (`engawa` message handler) and evaluate a string (`__shell._deliver`) —
-// injects __shell + shell.js at document start (contract §1, §6), and dispatches
-// commands. For the vertical slice the only command is `echo`; stage 3 introduces
-// the Adapter protocol and re-lands echo as an adapter with no privileged path.
+// injects __shell + shell.js at document start (contract §1, §6), and routes every
+// command through the adapter registry (§3). Built-in namespaces are adapters; there
+// is no privileged dispatch path. The only registered adapter so far is `echo`.
 final class EngawaHost: NSObject {
     let mode: String                 // "app" | "conformance"
-    let capabilities: [String]
+    private(set) var capabilities: [String] = []
     let shellJS: String
     let assetRoot: URL?
 
     private var window: NSWindow?
     private var webView: WKWebView!
     private let schemeHandler: AppSchemeHandler
+    private var router: Router!
 
     // Outbound delivery queue (contract §2.1): one eval per main-loop tick, frames batched.
     private var outbound: [[String: Any]] = []
@@ -22,7 +23,6 @@ final class EngawaHost: NSObject {
 
     init(mode: String, env: [String: String]) {
         self.mode = mode
-        self.capabilities = env["ENGAWA_APP_CAPS"].map { $0.split(separator: ",").map(String.init) } ?? ["echo"]
         guard let shellPath = env["ENGAWA_SHELL_JS"],
               let src = try? String(contentsOfFile: shellPath, encoding: .utf8) else {
             Out.err("engawa: ENGAWA_SHELL_JS unset or unreadable")
@@ -34,7 +34,20 @@ final class EngawaHost: NSObject {
         super.init()
     }
 
+    // Register the in-tree adapters and derive capabilities from them (§3). Built-ins go
+    // here alongside any app adapters; the router treats them identically.
+    private func registerAdapters() {
+        let emitter = HostEmitter { [weak self] topic, payload in
+            self?.emitEvent(topic: topic, payload: payload)
+        }
+        router = Router(emitter: emitter)
+        router.register(EchoAdapter())
+        capabilities = router.namespaces
+    }
+
     func boot() {
+        registerAdapters()
+
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
 
@@ -109,14 +122,47 @@ final class EngawaHost: NSObject {
               (obj["t"] as? String) == "req",
               let id = obj["id"] as? Int,
               let cmd = obj["cmd"] as? String else { return }
-        let args = obj["args"]
+        let args = JSONValue.from(obj["args"])
+        let (namespace, command) = splitCommand(cmd)
 
-        switch cmd {
-        case "echo":
-            enqueue(["t": "res", "id": id, "ok": true, "value": args ?? NSNull()])
-        default:
-            enqueue(["t": "res", "id": id, "ok": false,
-                     "err": ["code": "ENOSYS", "message": "unknown command: \(cmd)"]])
+        guard let adapter = router.adapter(for: namespace) else {
+            // shell.js gates unserved namespaces locally (§1.1); reaching here means the
+            // page bypassed the runtime, so answer defensively rather than trust it.
+            enqueue(errFrame(id, "ENOTSUP", "namespace not served: \(namespace)"))
+            return
+        }
+
+        Task {
+            do {
+                let value = try await adapter.handle(command, args)
+                await MainActor.run { self.enqueue(self.okFrame(id, value)) }
+            } catch let e as AdapterError {
+                await MainActor.run { self.enqueue(self.errFrame(id, e.code, e.message)) }
+            } catch {
+                await MainActor.run { self.enqueue(self.errFrame(id, "EUNKNOWN", "\(error)")) }
+            }
+        }
+    }
+
+    private func splitCommand(_ cmd: String) -> (namespace: String, command: String) {
+        if let dot = cmd.firstIndex(of: ".") {
+            return (String(cmd[..<dot]), String(cmd[cmd.index(after: dot)...]))
+        }
+        return (cmd, "")   // a bare command (e.g. the echo fixture) is namespace-only
+    }
+
+    private func okFrame(_ id: Int, _ value: JSONValue) -> [String: Any] {
+        ["t": "res", "id": id, "ok": true, "value": value.toFoundation()]
+    }
+
+    private func errFrame(_ id: Int, _ code: String, _ message: String) -> [String: Any] {
+        ["t": "res", "id": id, "ok": false, "err": ["code": code, "message": message]]
+    }
+
+    // An adapter emitted an event (§2, §2.1). Hop to main and enqueue as an evt frame.
+    private func emitEvent(topic: String, payload: JSONValue) {
+        DispatchQueue.main.async { [weak self] in
+            self?.enqueue(["t": "evt", "topic": topic, "payload": payload.toFoundation()])
         }
     }
 

@@ -30,7 +30,6 @@ function connectMacosHost() {
       ENGAWA_CONFORMANCE: '1',
       ENGAWA_SHELL_JS: SHELL_JS,
       ENGAWA_APP_ROOT: root,
-      ENGAWA_APP_CAPS: 'echo',
     },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
