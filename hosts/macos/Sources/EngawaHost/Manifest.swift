@@ -10,7 +10,8 @@ struct Manifest {
     let bundleRoot: URL
 
     static func load(env: [String: String]) -> Manifest? {
-        guard let root = env["ENGAWA_BUNDLE_ROOT"] else { return nil }
+        // ENGAWA_BUNDLE_ROOT (conformance) or the .app bundle Resources (a real app).
+        guard let root = env["ENGAWA_BUNDLE_ROOT"] ?? Bundle.main.resourceURL?.path else { return nil }
         let bundleRoot = URL(fileURLWithPath: root, isDirectory: true)
         let url = bundleRoot.appendingPathComponent("engawa.json")
         guard let data = try? Data(contentsOf: url),

@@ -23,10 +23,13 @@ function connectMacosHost() {
   }
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-conf-'));
-  // The inline <script> must be dead under the default CSP (§7.3); introspect reports it.
+  // §7.3: the inline <script> must be dead, but the EXTERNAL app: script must load
+  // (script-src app:). introspect reports both.
+  fs.writeFileSync(path.join(root, 'probe.js'), 'window.__externalRan = true;');
   fs.writeFileSync(path.join(root, 'index.html'),
     '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>' +
-    '<script>window.__inlineRan = true;</script>');
+    '<script>window.__inlineRan = true;</script>' +
+    '<script src="probe.js"></script>');
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-data-'));
 
   // Dev trust root (contract §7.1): an ephemeral ed25519 keypair; the host embeds the public
@@ -150,6 +153,7 @@ function connectMacosHost() {
         contractVersion: surface.contractVersion,
         capabilities: surface.capabilities,
         inlineScriptBlocked: surface.inlineScriptBlocked,
+        externalScriptRan: surface.externalScriptRan,
       }, behavior);
       return {
         name: 'macos',

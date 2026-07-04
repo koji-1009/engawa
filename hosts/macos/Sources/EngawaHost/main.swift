@@ -7,8 +7,10 @@ import Cocoa
 let env = ProcessInfo.processInfo.environment
 let mode = env["ENGAWA_CONFORMANCE"] == "1" ? "conformance" : "app"
 
+// Autotest launches (the make-notes gate) run windowless like conformance.
+let headless = mode == "conformance" || env["ENGAWA_AUTOTEST"] == "1"
 let app = NSApplication.shared
-app.setActivationPolicy(mode == "conformance" ? .accessory : .regular)
+app.setActivationPolicy(headless ? .accessory : .regular)
 
 let host = EngawaHost(mode: mode, env: env)
 host.boot()

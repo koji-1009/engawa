@@ -7,6 +7,7 @@ struct AppAdapter: Adapter {
     let appVersion: String
     let hostVersion: String
     let contractVersion: String
+    var autotest = false
 
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue {
         switch cmd {
@@ -22,6 +23,10 @@ struct AppAdapter: Adapter {
         case "quit":
             await MainActor.run { NSApp.terminate(nil) }
             return .null
+        case "__exit" where autotest:
+            // Autotest-only: end the process with an explicit code so the make-notes gate can
+            // read pass/fail per launch. The app awaits its result-file write before calling this.
+            exit(Int32(args.objectValue?["code"]?.numberValue ?? 0))
         default:
             throw AdapterError("ENOSYS", "unknown command: app.\(cmd)")
         }

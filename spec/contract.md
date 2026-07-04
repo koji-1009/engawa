@@ -142,7 +142,7 @@ Binary never travels the message channel. It rides the scheme handler:
 
 ### 7.3 Default CSP (normative)
 
-The host injects a Content-Security-Policy on every `app://` response: `default-src 'app:'; script-src 'app:'` at minimum. Relaxations (e.g. `connect-src` for API calls, `img-src` for remote media) are declared explicitly in `engawa.json` and applied verbatim; there is no silent widening. Inline script is dead by default — conformance asserts it. Host injection of `__shell` and shell.js (§1, §6) uses the engine's native user-script path (e.g. document-start user scripts), which is not subject to the page CSP; the CSP governs document content, not the host's own bridge.
+The host injects a Content-Security-Policy on every `app://` response: `default-src app:; script-src app:` at minimum (CSP scheme-sources are unquoted — `app:`, not `'app:'`; the quoted form is invalid and blocks the app's own scripts too, not just inline). Relaxations (e.g. `connect-src` for API calls, `img-src` for remote media) are declared explicitly in `engawa.json` and applied verbatim; there is no silent widening. Inline script is dead by default — conformance asserts it. Host injection of `__shell` and shell.js (§1, §6) uses the engine's native user-script path (e.g. document-start user scripts), which is not subject to the page CSP; the CSP governs document content, not the host's own bridge.
 
 ### 7.1 Update trust model (normative)
 

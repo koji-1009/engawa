@@ -104,7 +104,7 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
     // Default CSP (contract §7.3): confine document content to the app origin. Inline script
     // is dead by default — no 'unsafe-inline'. Host injection of __shell/shell.js uses the
     // native user-script path and is not subject to this policy.
-    private let defaultCSP = "default-src 'app:'; script-src 'app:'"
+    private let defaultCSP = "default-src app:; script-src app:"
 
     // MARK: response helpers
 

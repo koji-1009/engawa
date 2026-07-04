@@ -8,6 +8,7 @@ var h = require('../../../conformance/harness');
 var fs = require('fs');
 var os = require('os');
 var path = require('path');
+var child_process = require('child_process');
 var test = h.test, assert = h.assert, assertEqual = h.assertEqual;
 
 function has(engawa) { return engawa.capabilities.indexOf('update') >= 0; }
@@ -19,10 +20,13 @@ async function waitFor(cond, timeoutMs) {
 }
 
 var seq = 0;
+// An app-update payload is a tarball of the new asset tree (§8: unpacks to a fresh directory).
 function writePayload(html) {
-  var p = path.join(os.tmpdir(), 'engawa-upd-' + Date.now() + '-' + (seq++) + '.html');
-  fs.writeFileSync(p, html);
-  return p;
+  var src = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-updsrc-'));
+  fs.writeFileSync(path.join(src, 'index.html'), html);
+  var tar = path.join(os.tmpdir(), 'engawa-upd-' + Date.now() + '-' + (seq++) + '.tar');
+  child_process.execFileSync('tar', ['-cf', tar, '-C', src, '.']);
+  return tar;
 }
 
 test('update: sign → stage → relaunch → confirmBoot adopts the pending slot', async function (engawa) {

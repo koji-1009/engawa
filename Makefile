@@ -25,8 +25,7 @@ host-macos:
 # Gate 2 — acceptance gate. Build host + sqlite/update adapters, bundle examples/notes,
 # scripted write/read/quit/relaunch/read-back/signed-update/relaunch (CLAUDE.md).
 notes:
-	@echo "make notes: acceptance gate not yet implemented (bootstrap stage 6)." >&2
-	@exit 1
+	bash examples/notes/gate/gate.sh
 
 clean:
 	rm -rf build

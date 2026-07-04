@@ -118,13 +118,13 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
             throw AdapterError("ESIGNATURE", "signature verification failed")
         }
 
-        // Verified: unpack into the non-live slot.
+        // Verified: unpack the payload tarball into a fresh non-live slot (§8).
         let current = readString(currentFile) ?? "a"
         let target = current == "a" ? "b" : "a"
         let targetDir = slotDir(target)
         try? FileManager.default.removeItem(at: targetDir)
         try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
-        try payload.write(to: targetDir.appendingPathComponent("index.html"))
+        try extractTar(URL(fileURLWithPath: payloadPath), into: targetDir)
         writeAtomic(pendingVersionFile, version)
 
         // The single atomic commit point: reserve adoption.
@@ -168,6 +168,15 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
         if let data = try? JSONSerialization.data(withJSONObject: obj) {
             try? data.write(to: healthFile, options: .atomic)
         }
+    }
+
+    private func extractTar(_ tar: URL, into dir: URL) throws {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        p.arguments = ["-xf", tar.path, "-C", dir.path]
+        do { try p.run() } catch { throw AdapterError("EIO", "cannot run tar: \(error.localizedDescription)") }
+        p.waitUntilExit()
+        if p.terminationStatus != 0 { throw AdapterError("EIO", "tar extraction failed (\(p.terminationStatus))") }
     }
 
     private func copyContents(of src: URL, into dst: URL) {

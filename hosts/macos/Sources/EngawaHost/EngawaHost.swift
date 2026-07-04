@@ -24,6 +24,8 @@ final class EngawaHost: NSObject {
     let appVersion: String
     let manifest: Manifest?
     let slots: SlotManager
+    let autotest: Bool
+    private let autotestUpdate: String   // ENGAWA_AUTOTEST_UPDATE JSON, or "null"
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -37,24 +39,45 @@ final class EngawaHost: NSObject {
 
     init(mode: String, env: [String: String]) {
         self.mode = mode
-        guard let shellPath = env["ENGAWA_SHELL_JS"],
-              let src = try? String(contentsOfFile: shellPath, encoding: .utf8) else {
-            Out.err("engawa: ENGAWA_SHELL_JS unset or unreadable")
+
+        // Assets resolve from env (conformance) or, failing that, the .app bundle (a real app).
+        let bundleResources = Bundle.main.resourceURL
+
+        // shell.js: ENGAWA_SHELL_JS, else <bundle>/Resources/shell.js.
+        let shellSrc: String? = {
+            if let p = env["ENGAWA_SHELL_JS"], let s = try? String(contentsOfFile: p, encoding: .utf8) { return s }
+            if let u = bundleResources?.appendingPathComponent("shell.js"),
+               let s = try? String(contentsOf: u, encoding: .utf8) { return s }
+            return nil
+        }()
+        guard let shellSrc = shellSrc else {
+            Out.err("engawa: shell.js not found (ENGAWA_SHELL_JS or bundle Resources/shell.js)")
             exit(3)
         }
-        self.shellJS = src
+        self.shellJS = shellSrc
         self.dirs = AppDirs.resolve(env: env)
-        self.appVersion = env["ENGAWA_APP_VERSION"] ?? "0.0.0"
+        self.appVersion = env["ENGAWA_APP_VERSION"] ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
         self.manifest = Manifest.load(env: env)
 
-        // A/B slots (§8): the app:// root is the live slot, seeded on first boot from the
-        // packaged assets. Trust root (§7.1) is the embedded/dev ed25519 public key.
+        // App assets seed: ENGAWA_APP_ROOT, else <bundle>/Resources/app.
         let seed = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? bundleResources?.appendingPathComponent("app")
+
+        // Trust root (§7.1): ENGAWA_TRUST_ROOT, else <bundle>/Resources/trust-root.txt.
+        let trustRoot: String? = env["ENGAWA_TRUST_ROOT"] ?? {
+            guard let u = bundleResources?.appendingPathComponent("trust-root.txt"),
+                  let s = try? String(contentsOf: u, encoding: .utf8) else { return nil }
+            return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        }()
+
+        // Slots live under the real per-app data dir unless an isolated root is given.
         let slotsBase = URL(fileURLWithPath: env["ENGAWA_DATA_ROOT"] ?? dirs.appData)
             .appendingPathComponent("engawa")
-        let slots = SlotManager(base: slotsBase, seed: seed, trustRootB64: env["ENGAWA_TRUST_ROOT"])
+        let slots = SlotManager(base: slotsBase, seed: seed, trustRootB64: trustRoot)
         self.slots = slots
         self.schemeHandler = AppSchemeHandler(rootProvider: { slots.liveSlotDir() })
+        self.autotest = env["ENGAWA_AUTOTEST"] == "1"
+        self.autotestUpdate = env["ENGAWA_AUTOTEST_UPDATE"] ?? "null"
         super.init()
     }
 
@@ -71,7 +94,8 @@ final class EngawaHost: NSObject {
         router.register(FsAdapter())
         router.register(AppAdapter(appVersion: appVersion,
                                    hostVersion: Self.hostVersion,
-                                   contractVersion: Self.contractVersion))
+                                   contractVersion: Self.contractVersion,
+                                   autotest: autotest))
         // A private pasteboard under conformance so the suite never touches the user's clipboard.
         let pasteboard = mode == "conformance"
             ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
@@ -117,7 +141,7 @@ final class EngawaHost: NSObject {
         w.contentView = webView
         window = w
         windowController.attach(w)
-        if mode == "conformance" {
+        if mode == "conformance" || autotest {
             w.setFrameOrigin(NSPoint(x: -10000, y: -10000))   // off-screen; never shown
         } else {
             w.center()
@@ -131,6 +155,7 @@ final class EngawaHost: NSObject {
     private func bootstrapScript() -> String {
         let caps = JSON.string(capabilities) ?? "[]"
         let cv = Self.contractVersion
+        let autotestJS = autotest ? "window.__engawaAutotest = { update: \(autotestUpdate) };" : ""
         return """
         (function(){
           if (location.protocol === 'app:') {
@@ -140,6 +165,7 @@ final class EngawaHost: NSObject {
               capabilities: \(caps),
               postMessage: function(s){ window.webkit.messageHandlers.engawa.postMessage(s); }
             };
+            \(autotestJS)
           } else {
             window.__shell = { contractVersion: "\(cv)", platform: "macos", capabilities: [], postMessage: function(){} };
           }
@@ -290,7 +316,8 @@ final class EngawaHost: NSObject {
             capabilities: engawa.capabilities,
             platform: engawa.platform,
             contractVersion: engawa.contractVersion,
-            inlineScriptBlocked: (typeof window.__inlineRan === 'undefined')
+            inlineScriptBlocked: (typeof window.__inlineRan === 'undefined'),
+            externalScriptRan: (window.__externalRan === true)
           }});
         })();
         """
