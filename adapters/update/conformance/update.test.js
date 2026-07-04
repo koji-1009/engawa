@@ -104,16 +104,16 @@ test('update: a verified-but-broken payload rolls back after 2 unconfirmed launc
 test('update.evaluate applies the §8 compatibility rule (app-update vs full-update)', async function (engawa) {
   if (!has(engawa)) return;
   var appOnly = await engawa.invoke('update.evaluate', {
-    manifest: { app: { version: '2.0.0', contractRequired: '1.0', capabilitiesRequired: ['sqlite'] } },
-    provided: { contractProvided: '1.0', capabilities: ['sqlite', 'update'] },
+    manifest: { app: { version: '2.0.0', contractRequired: '0.1.0', capabilitiesRequired: ['sqlite'] } },
+    provided: { contractProvided: '0.1.0', capabilities: ['sqlite', 'update'] },
   });
   assertEqual(appOnly.mode, 'app-update', 'satisfied base → app-update');
 
   var events = [];
   var off = engawa.on('update.readyToInstall', function (p) { events.push(p); });
   var full = await engawa.invoke('update.evaluate', {
-    manifest: { app: { version: '2.0.0', contractRequired: '1.0', capabilitiesRequired: ['not-served'] } },
-    provided: { contractProvided: '1.0', capabilities: ['sqlite', 'update'] },
+    manifest: { app: { version: '2.0.0', contractRequired: '0.1.0', capabilitiesRequired: ['not-served'] } },
+    provided: { contractProvided: '0.1.0', capabilities: ['sqlite', 'update'] },
   });
   assertEqual(full.mode, 'full-update', 'missing capability → full-update');
   await waitFor(function () { return events.length > 0; }, 2000);

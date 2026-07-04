@@ -17,7 +17,7 @@
     assert(typeof info.engine === 'string' && info.engine.length > 0, 'engine');
     assert(typeof info.engineVersion === 'string' && info.engineVersion.length > 0, 'engineVersion');
     assert(typeof info.hostVersion === 'string' && info.hostVersion.length > 0, 'hostVersion');
-    assertEqual(info.contractVersion, '1.0', 'contractVersion is the running contract');
+    assertEqual(info.contractVersion, '0.1.0', 'contractVersion is the running contract');
   });
 
   test('app.engineInfo.contractVersion matches engawa.contractVersion', async function (engawa) {

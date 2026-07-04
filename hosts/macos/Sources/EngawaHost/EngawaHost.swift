@@ -14,8 +14,8 @@ import EngawaUpdate
 // Adapters run off-actor (their handle is nonisolated async); results hop back here.
 @MainActor
 final class EngawaHost: NSObject {
-    static let contractVersion = "1.0"
-    static let hostVersion = "macos-host-0.1"
+    static let contractVersion = "0.1.0"   // DRAFT — pre-1.0 semver until the contract is frozen
+    static let hostVersion = "macos-host-0.1.0"
 
     let mode: String                 // "app" | "conformance"
     private(set) var capabilities: [String] = []

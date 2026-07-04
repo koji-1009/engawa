@@ -6,7 +6,7 @@ Standing rules. These survive the entire project lifetime; they are not a plan. 
 
 ```
 engawa/
-  spec/              # THE CONTRACT — normative; DRAFT until tagged contract-1.0
+  spec/              # THE CONTRACT — normative; DRAFT until tagged contract-1.0.0
     contract.md
     commands/        # per-namespace normative detail, one file per namespace
     errors.md        # error-code registry
@@ -45,7 +45,7 @@ Gate mechanics (fixed decisions — do not re-open):
 
 ## Spec status
 
-`spec/` is DRAFT and grows with implementation until tagged `contract-1.0`. After the tag: additive-only within the major version; the handshake's `contractVersion` carries negotiation.
+`spec/` is DRAFT and grows with implementation until tagged `contract-1.0.0`. After the tag: additive-only within the major version; the handshake's `contractVersion` carries negotiation.
 
 ## Clean-room rule (hosts/windows, hosts/linux)
 

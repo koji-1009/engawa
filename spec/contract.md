@@ -1,6 +1,6 @@
 # Engawa Contract
 
-**Status: DRAFT.** This document grows with the reference implementation and freezes as `contract-1.0`. Until tagged, nothing here is stable. Ambiguities discovered during implementation are resolved *here*, never in host-specific behavior.
+**Status: DRAFT.** This document grows with the reference implementation and freezes as `contract-1.0.0`. Until tagged, nothing here is stable. Ambiguities discovered during implementation are resolved *here*, never in host-specific behavior.
 
 Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 
@@ -10,7 +10,7 @@ The host injects, at document start, into every qualifying document (§6):
 
 ```js
 window.__shell = {
-  contractVersion: "1.0",
+  contractVersion: "0.1.0",   // DRAFT — pre-1.0 semver until the contract is frozen
   platform: "macos" | "windows" | "linux",
   capabilities: ["window", "dialog", "fs", ...],  // namespaces this host serves
   postMessage(jsonString)          // JS → host, fire-and-forget
@@ -162,13 +162,13 @@ One manifest serves both update modes; splitting them would let an app update ou
   "manifestVersion": 1,
   "app": {
     "version": "2.3.1",
-    "contractRequired": "1.0",
+    "contractRequired": "0.1.0",
     "capabilitiesRequired": ["sqlite", "update"],
     "url": "...", "hash": "sha256-...", "signature": "ed25519-..."
   },
   "base": {
     "version": "1.2.0",
-    "contractProvided": "1.0",
+    "contractProvided": "0.1.0",
     "platforms": {
       "macos":   { "url": "...", "hash": "...", "signature": "...", "minOS": "13.0" },
       "windows": { "url": "...", "hash": "...", "signature": "...", "minOS": "10.0.17763" },

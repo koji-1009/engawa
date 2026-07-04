@@ -1,6 +1,6 @@
 # Engawa Asset Resolution (`app://`)
 
-**Status: DRAFT.** Normative once folded into `contract-1.0`. Governs how a host serves the app's assets over the `app://` scheme (contract §5). Grows with implementation.
+**Status: DRAFT.** Normative once folded into `contract-1.0.0`. Governs how a host serves the app's assets over the `app://` scheme (contract §5). Grows with implementation.
 
 Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 

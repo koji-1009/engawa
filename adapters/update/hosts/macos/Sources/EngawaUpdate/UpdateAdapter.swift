@@ -57,12 +57,12 @@ public final class UpdateAdapter: Adapter, @unchecked Sendable {
     // needed (base first). `provided` carries the running base's facts.
     private func evaluate(_ obj: [String: JSONValue]) -> JSONValue {
         let app = obj["manifest"]?.objectValue?["app"]?.objectValue ?? [:]
-        let contractRequired = app["contractRequired"]?.stringValue ?? "1.0"
+        let contractRequired = app["contractRequired"]?.stringValue ?? "0.1.0"
         let capsRequired = (app["capabilitiesRequired"]?.arrayValue ?? []).compactMap { $0.stringValue }
         let version = app["version"]?.stringValue ?? "0.0.0"
 
         let provided = obj["provided"]?.objectValue ?? [:]
-        let contractProvided = provided["contractProvided"]?.stringValue ?? "1.0"
+        let contractProvided = provided["contractProvided"]?.stringValue ?? "0.1.0"
         let capsProvided = Set((provided["capabilities"]?.arrayValue ?? []).compactMap { $0.stringValue })
 
         let contractOK = contractRequired == contractProvided   // exact major.minor match for v1

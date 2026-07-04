@@ -146,7 +146,7 @@ function buildHandlers(ctx) {
       engine: 'mock',
       engineVersion: process.version,
       hostVersion: 'mock-0.1',
-      contractVersion: '1.0',
+      contractVersion: '0.1.0',
     }),
     'app.quit': async () => null,   // the mock host has no process to end
 
@@ -364,7 +364,7 @@ function createMockHost(options = {}) {
     [...new Set(Object.keys(handlers).map((k) => k.split('.')[0]))];
 
   const shell = {
-    contractVersion: '1.0',
+    contractVersion: '0.1.0',
     platform: 'mock',
     capabilities,
     postMessage(jsonString) { onRequest(jsonString); },
