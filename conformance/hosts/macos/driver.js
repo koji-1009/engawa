@@ -23,6 +23,7 @@ function connectMacosHost() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-conf-'));
   fs.writeFileSync(path.join(root, 'index.html'),
     '<!doctype html><meta charset="utf-8"><title>engawa-conformance</title>');
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-data-'));
 
   const child = spawn(HOST_BIN, [], {
     env: {
@@ -30,6 +31,7 @@ function connectMacosHost() {
       ENGAWA_CONFORMANCE: '1',
       ENGAWA_SHELL_JS: SHELL_JS,
       ENGAWA_APP_ROOT: root,
+      ENGAWA_DATA_ROOT: dataRoot,
     },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
@@ -92,6 +94,7 @@ function connectMacosHost() {
     return () => new Promise((resolve) => {
       child.on('exit', () => {
         try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(dataRoot, { recursive: true, force: true }); } catch { /* ignore */ }
         resolve();
       });
       send({ ctl: 'quit' });

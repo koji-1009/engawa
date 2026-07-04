@@ -11,6 +11,7 @@ final class EngawaHost: NSObject {
     private(set) var capabilities: [String] = []
     let shellJS: String
     let assetRoot: URL?
+    let dirs: AppDirs
 
     private var window: NSWindow?
     private var webView: WKWebView!
@@ -31,6 +32,7 @@ final class EngawaHost: NSObject {
         self.shellJS = src
         self.assetRoot = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         self.schemeHandler = AppSchemeHandler(assetRoot: assetRoot)
+        self.dirs = AppDirs.resolve(env: env)
         super.init()
     }
 
@@ -42,6 +44,7 @@ final class EngawaHost: NSObject {
         }
         router = Router(emitter: emitter)
         router.register(EchoAdapter())
+        router.register(PathAdapter(dirs: dirs))
         capabilities = router.namespaces
     }
 

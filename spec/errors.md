@@ -17,5 +17,7 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 | `ENOENT` | A referenced path does not exist (contract §2 example). |
 | `EINVAL` | An argument is malformed or out of range; for `window.respondToClose`, an unknown or already-consumed token (contract §4.2). |
 | `ENOTSUP` | The command's namespace is not in `capabilities`. shell.js rejects locally, without a host round-trip (contract §1.1). |
+| `ENOSYS` | The namespace is served but has no such command. |
+| `EIO` | An underlying OS operation failed (create, read, write) for a reason with no more specific code. |
 
 _The registry is seeded with the two codes the contract already names. Command namespaces add their codes here in the same commit as their spec section and conformance test (bootstrap stage 4)._

@@ -7,16 +7,26 @@
 
 const vm = require('vm');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const SHELL_JS = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'shell-js', 'shell.js'), 'utf8');
 
-// Command handlers served by the mock host. The vertical slice serves one: echo.
-// Stage 3 re-lands echo as an in-tree adapter; stage 4 adds the §4 namespaces.
+// Command handlers served by the mock host, keyed by full `namespace.command`.
+// `echo` remains as the slice fixture; §4 namespaces are added here as they land.
 function defaultHandlers() {
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-mock-'));
+  const ensure = (p) => { fs.mkdirSync(p, { recursive: true }); return p; };
   return {
     echo: async (args) => args,
+
+    // path (spec/commands/path.md)
+    'path.appData': async () => ensure(path.join(dataRoot, 'data')),
+    'path.appConfig': async () => ensure(path.join(dataRoot, 'config')),
+    'path.appCache': async () => ensure(path.join(dataRoot, 'cache')),
+    'path.home': async () => os.homedir(),
+    'path.temp': async () => os.tmpdir(),
   };
 }
 
