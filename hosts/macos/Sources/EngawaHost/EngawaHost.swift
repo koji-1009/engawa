@@ -54,6 +54,11 @@ final class EngawaHost: NSObject {
         router.register(AppAdapter(appVersion: appVersion,
                                    hostVersion: Self.hostVersion,
                                    contractVersion: Self.contractVersion))
+        // A private pasteboard under conformance so the suite never touches the user's clipboard.
+        let pasteboard = mode == "conformance"
+            ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
+            : NSPasteboard.general
+        router.register(ClipboardAdapter(pasteboard: pasteboard))
         capabilities = router.namespaces
     }
 

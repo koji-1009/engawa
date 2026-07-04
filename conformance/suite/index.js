@@ -7,5 +7,6 @@ require('./capabilities.test');
 require('./path.test');
 require('./fs.test');
 require('./app.test');
+require('./clipboard.test');
 
 module.exports = require('../harness').tests;

@@ -18,6 +18,7 @@ const SHELL_JS = fs.readFileSync(
 function defaultHandlers() {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-mock-'));
   const ensure = (p) => { fs.mkdirSync(p, { recursive: true }); return p; };
+  const clipboard = { text: '' };
   return {
     echo: async (args) => args,
 
@@ -89,6 +90,14 @@ function defaultHandlers() {
       contractVersion: '1.0',
     }),
     'app.quit': async () => null,   // the mock host has no process to end
+
+    // clipboard (spec/commands/clipboard.md) — in-memory, per host instance
+    'clipboard.writeText': async (a) => {
+      if (!a || typeof a.text !== 'string') throw err('EINVAL', 'text required');
+      clipboard.text = a.text;
+      return null;
+    },
+    'clipboard.readText': async () => clipboard.text,
   };
 }
 
