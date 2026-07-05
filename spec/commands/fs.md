@@ -5,12 +5,13 @@ Text file and directory operations. **Text only** — binary rides the `app://io
 (contract §7 — the app author is trusted, remote content never reaches commands). Durable
 data lives here, under a `path.*` directory (contract §10).
 
-Every command takes an object with at least `path`. A missing/empty `path` is `EINVAL`.
+Every command takes an object with at least `path`. A missing/empty `path` is `EINVAL`; so is a
+**relative** `path` — paths must be absolute (a GUI app has no well-defined cwd to resolve against).
 
 | Command | Args | Returns | Notes |
 |---------|------|---------|-------|
-| `fs.readTextFile` | `{ path }` | string | UTF-8 contents. `ENOENT` if absent, `EISDIR` if a directory. |
-| `fs.writeTextFile` | `{ path, contents }` | `null` | Creates or overwrites `path`. The parent directory must exist (`ENOENT` otherwise). Write is atomic (temp + rename). |
+| `fs.readTextFile` | `{ path }` | string | UTF-8 contents. `ENOENT` if absent, `EISDIR` if a directory, `EIO` if the bytes are not valid UTF-8 (no lossy replacement). |
+| `fs.writeTextFile` | `{ path, contents }` | `null` | Creates or overwrites `path`. A missing `contents` (non-string) is `EINVAL`. The parent directory must exist (`ENOENT` otherwise). Write is atomic (temp + rename). |
 | `fs.exists` | `{ path }` | boolean | True iff something exists at `path`. |
 | `fs.mkdir` | `{ path, recursive? }` | `null` | Creates a directory. `recursive` creates parents and is idempotent. Non-recursive on an existing path → `EEXIST`. |
 | `fs.remove` | `{ path, recursive? }` | `null` | Removes a file or directory. `ENOENT` if absent. A non-empty directory without `recursive` → `ENOTEMPTY`. |

@@ -217,11 +217,16 @@ function buildHandlers(ctx) {
     // shellOpen (spec/commands/shellOpen.md) — record-only (the mock has no OS to hand off to)
     'shellOpen.openExternal': async (a) => {
       if (!a || typeof a.url !== 'string' || !a.url) throw err('EINVAL', 'url required');
+      var scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(a.url) || [])[1];
+      if (!scheme || ['http', 'https', 'mailto', 'tel'].indexOf(scheme.toLowerCase()) < 0) {
+        throw err('EINVAL', 'unsupported url scheme (http, https, mailto, tel only)');
+      }
       shellOpenRecorded.push({ action: 'openExternal', url: a.url });
       return null;
     },
     'shellOpen.revealInFolder': async (a) => {
       if (!a || typeof a.path !== 'string' || !a.path) throw err('EINVAL', 'path required');
+      if (!fs.existsSync(a.path)) throw err('ENOENT', 'no such path: ' + a.path);
       shellOpenRecorded.push({ action: 'revealInFolder', path: a.path });
       return null;
     },
@@ -374,6 +379,7 @@ function coalesceResize(frames) {
 
 function reqPath(a) {
   if (!a || typeof a.path !== 'string' || a.path.length === 0) throw err('EINVAL', 'path required');
+  if (a.path[0] !== '/') throw err('EINVAL', 'path must be absolute: ' + a.path);   // spec/commands/fs.md
   return a.path;
 }
 

@@ -31,4 +31,19 @@
     assert(err, 'expected rejection');
     assertEqual(err.code, 'EINVAL', 'code');
   });
+
+  test('shellOpen.openExternal rejects a non-web scheme (file:/javascript:) with EINVAL (§7)', async function (engawa) {
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)']) {
+      var err = null;
+      try { await engawa.invoke('shellOpen.openExternal', { url: url }); } catch (e) { err = e; }
+      assert(err && err.code === 'EINVAL', 'expected EINVAL for ' + url);
+    }
+  });
+
+  test('shellOpen.revealInFolder on a nonexistent path rejects ENOENT', async function (engawa) {
+    var err = null;
+    try { await engawa.invoke('shellOpen.revealInFolder', { path: '/no/such/engawa/path/xyz' }); } catch (e) { err = e; }
+    assert(err, 'expected rejection');
+    assertEqual(err.code, 'ENOENT', 'code');
+  });
 })();

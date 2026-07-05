@@ -71,6 +71,13 @@
     await engawa.invoke('fs.remove', { path: dir, recursive: true });
   });
 
+  test('fs.readTextFile with a relative path rejects EINVAL', async function (engawa) {
+    var err = null;
+    try { await engawa.invoke('fs.readTextFile', { path: 'relative/notes.txt' }); } catch (e) { err = e; }
+    assert(err, 'expected rejection');
+    assertEqual(err.code, 'EINVAL', 'code');
+  });
+
   test('fs.readTextFile on a directory rejects EISDIR', async function (engawa) {
     var dir = await scratchDir(engawa);
     var err = null;

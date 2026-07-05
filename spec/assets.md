@@ -17,7 +17,8 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 
 ## 404 behavior
 
-- A request that resolves within the root but has no backing file is `404` with a `text/plain` body. _Richer 404 semantics (SPA fallback opt-in) are deferred._
+- A request that resolves within the root but has no backing file is `404` with a `text/plain` body. This includes a bare **directory** request (e.g. `app://app/docs/`) that has no `docs/index.html`: only the app **root** (`/` or empty path) resolves to `index.html`; other directory paths are not auto-indexed and are `404`. _Richer 404 / SPA-fallback semantics are deferred._
+- **Range requests** (`206 Partial Content`) are **out of scope in v1**: a host MAY answer the full body with `200`. Apps needing seekable large media should stream from `app://io` or `fs` rather than rely on ranged `app://` GETs.
 
 ## Response headers (per response class)
 
@@ -29,7 +30,7 @@ Keywords MUST / MUST NOT / SHOULD follow RFC 2119.
 **Binary I/O responses** (`app://io/…`, contract §5a):
 
 - `Access-Control-Allow-Origin` covering the app origin (so `fetch` from an app document can read the result), `Access-Control-Allow-Methods: GET, PUT`, and a `204` on a CORS preflight (`OPTIONS`) where the engine issues one.
-- A PUT response body carries the result/error frame as JSON; a GET response body streams the file bytes as `application/octet-stream`.
+- **Status is always `200`** (except the `204` preflight); success and failure are carried in the body, not the HTTP status, so the JS side reads them uniformly. A **PUT** always returns a JSON envelope `{ ok, value } | { ok:false, err:{ code, message } }` (`value:{ bytesWritten }` on success). A **GET** returns the raw file bytes as `application/octet-stream` on success, or the same JSON error envelope on failure. An invalid/expired/consumed token, or a method that doesn't match the token's direction, is `{ ok:false, err:{ code:"EINVAL" } }`; an I/O failure is `EIO`.
 
 ## MIME types
 

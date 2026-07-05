@@ -5,8 +5,8 @@ file in the file manager (contract §7 — external-origin navigation is otherwi
 
 | Command | Args | Returns | Notes |
 |---------|------|---------|-------|
-| `shellOpen.openExternal` | `{ url }` | `null` | Opens `url` in the default handler. Missing/empty `url` → `EINVAL`. |
-| `shellOpen.revealInFolder` | `{ path }` | `null` | Reveals `path` in the file manager. Missing/empty `path` → `EINVAL`. |
+| `shellOpen.openExternal` | `{ url }` | `null` | Opens `url` in the default handler. Only user-web schemes are allowed — `http`, `https`, `mailto`, `tel`; anything else (`file:`, `javascript:`, a custom scheme, missing/empty) → `EINVAL`. This keeps "open a link" from becoming a local-file / script surface (§7). |
+| `shellOpen.revealInFolder` | `{ path }` | `null` | Reveals `path` in the file manager. Missing/empty `path` → `EINVAL`; a path that does not exist → `ENOENT`. |
 
 ## Testability hook (normative, conformance only)
 
@@ -16,4 +16,4 @@ records each request instead of performing it, and exposes the record via `shell
 lets the suite assert intent without launching a browser. Same rationale as the §9
 `ENGAWA_FAKE_ENGINE_VERSION` hook.
 
-Errors: `EINVAL`, `ENOSYS`.
+Errors: `EINVAL`, `ENOENT`, `ENOSYS`.

@@ -20,15 +20,22 @@ final class ShellOpenAdapter: Adapter, @unchecked Sendable {
         switch cmd {
         case "openExternal":
             guard let url = obj["url"]?.stringValue, !url.isEmpty else { throw AdapterError("EINVAL", "url required") }
+            // §7 sanctioned hand-off, but only for user-web schemes — never file:// or javascript:
+            // etc., which would turn "open a link" into local file / script surface.
+            guard let u = URL(string: url), let scheme = u.scheme?.lowercased(),
+                  ["http", "https", "mailto", "tel"].contains(scheme) else {
+                throw AdapterError("EINVAL", "unsupported url scheme (http, https, mailto, tel only)")
+            }
             if conformance {
                 record(["action": .string("openExternal"), "url": .string(url)])
-            } else if let u = URL(string: url) {
+            } else {
                 await MainActor.run { NSWorkspace.shared.open(u) }
             }
             return .null
 
         case "revealInFolder":
             guard let p = obj["path"]?.stringValue, !p.isEmpty else { throw AdapterError("EINVAL", "path required") }
+            guard FileManager.default.fileExists(atPath: p) else { throw AdapterError("ENOENT", "no such path: \(p)") }
             if conformance {
                 record(["action": .string("revealInFolder"), "path": .string(p)])
             } else {

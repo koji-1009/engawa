@@ -3,8 +3,8 @@
 | Command | Args | Returns | Notes |
 |---------|------|---------|-------|
 | `window.setTitle` | `{ title }` | `null` | Sets the window title. |
-| `window.getSize` | — | `{ width, height }` | Content size in points. |
-| `window.setSize` | `{ width, height }` | `null` | Sets the content size. Missing/non-number → `EINVAL`. |
+| `window.getSize` | — | `{ width, height }` | Content size in **CSS pixels** (device-independent; the same unit CSS sees, not physical/backing pixels). |
+| `window.setSize` | `{ width, height }` | `null` | Sets the content size, in CSS pixels. Missing/non-number → `EINVAL`. A host MAY clamp non-positive values to its minimum. |
 | `window.setResizable` | `{ resizable }` | `null` | Enables/disables user resizing. |
 | `window.minimize` | — | `null` | Minimizes the window. |
 | `window.maximize` | — | `null` | Maximizes / zooms the window. |

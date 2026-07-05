@@ -11,7 +11,7 @@ WebView storage.
 | `path.appConfig` | string | Per-app configuration directory. Created if absent. |
 | `path.appCache` | string | Per-app cache directory (evictable by intent, not by the engine). Created if absent. |
 | `path.home` | string | The user's home directory. Not created; assumed to exist. |
-| `path.temp` | string | A directory for temporary files. |
+| `path.temp` | string | A directory for temporary files. Exists (the OS temp location). |
 
 Normative:
 

@@ -90,7 +90,7 @@ Built-in namespaces (§4) are adapters that ship in-tree. There is no privileged
 |-----------|----------|
 | `window` | `setTitle`, `setSize`, `getSize`, `minimize`, `maximize`, `close`, `setResizable`, `setCloseHandler`, `respondToClose` |
 | `dialog` | `open`, `save`, `message` |
-| `fs` | `readTextFile`, `writeTextFile`, `exists`, `mkdir`, `remove`, `readDir`, `stat` — text only; binary via §5a |
+| `fs` | `readTextFile`, `writeTextFile`, `exists`, `mkdir`, `remove`, `readDir`, `stat`, `openRead`, `openWrite` — text direct; binary via `openRead`/`openWrite` over §5a |
 | `path` | `appData`, `appConfig`, `appCache`, `home`, `temp` |
 | `clipboard` | `readText`, `writeText` |
 | `shellOpen` | `openExternal`, `revealInFolder` |
@@ -193,7 +193,7 @@ Mode semantics:
   health           # { bootingSlot, attempts }
 ```
 
-  Flow: the verified payload (§7.1) unpacks into the non-live slot → `pending` is written (a single atomic file write — the only commit point; at any crash instant the state is either "pre-update" or "adoption reserved", never in between) → on next launch the host boots the pending slot and increments `health.attempts` → shell.js calls `update.confirmBoot()` once the app has successfully initialized → the host switches `current`, clears `pending` and `health`. If `confirmBoot` does not arrive within 2 launch attempts, the host discards `pending` and boots the previous slot. This makes rollback cover not just interrupted swaps but **verified-yet-broken payloads**: a payload whose signature is valid but whose app fails to boot is automatically abandoned. `update.confirmBoot` is a required command of the `update` namespace; an app that never calls it cannot be updated.
+  Flow: the verified payload (§7.1) unpacks into the non-live slot → `pending` is written (a single atomic file write — the only commit point; at any crash instant the state is either "pre-update" or "adoption reserved", never in between) → on next launch the host boots the pending slot and increments `health.attempts` → **the app** calls `update.confirmBoot()` once it has successfully initialized (this is app knowledge — shell.js cannot know when an app-defined "ready" is reached — so the app, not shell.js, is responsible for calling it) → the host switches `current`, clears `pending` and `health`. If `confirmBoot` does not arrive within 2 launch attempts, the host discards `pending` and boots the previous slot. This makes rollback cover not just interrupted swaps but **verified-yet-broken payloads**: a payload whose signature is valid but whose app fails to boot is automatically abandoned. `update.confirmBoot` is a required command of the `update` namespace; an app that never calls it cannot be updated.
 
 - **full-update:** the update adapter's obligation ends at "verified installer on disk + `update.readyToInstall` event." Installation executes OS-natively when the app calls `update.install` (host exits into the platform's replace flow: .app swap, installer launch, AppImage replace). The contract specifies everything up to that handoff; nothing after it. On the first launch after a base replacement, the host MUST compare its `contractProvided` against the live slot's `contractRequired` and adopt a compatible `pending` app slot first if the live one no longer fits — completing the base-first/app-second ordering at boot.
 

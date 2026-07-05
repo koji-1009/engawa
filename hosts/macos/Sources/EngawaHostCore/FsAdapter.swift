@@ -105,6 +105,9 @@ struct FsAdapter: Adapter {
 
     private func path(_ obj: [String: JSONValue]) throws -> String {
         guard let p = obj["path"]?.stringValue, !p.isEmpty else { throw AdapterError("EINVAL", "path required") }
+        // fs paths are absolute (spec/commands/fs.md); a relative path has no defined base for a
+        // GUI app, so reject it rather than resolve against an ambiguous cwd.
+        guard p.hasPrefix("/") else { throw AdapterError("EINVAL", "path must be absolute: \(p)") }
         return p
     }
 }
