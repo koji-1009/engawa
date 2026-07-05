@@ -11,7 +11,7 @@
 # It builds a single native EngawaHost.exe from the host core (built-ins §4 + infra) + the
 # contract-coupled `update` adapter (§7.1/§8, always) + the given app adapters + the compose TU.
 #
-# Adapter native-dependency contract (spec/commands/README.md): an adapter dir may contain a
+# Adapter native-dependency contract (docs/design.md "Composition"): an adapter dir may contain a
 # `deps.cmake`. It runs with `DEPS` (a git-ignored fetch dir) available and may append native sources
 # to `ENGAWA_EXTRA_SOURCES` and include dirs to `ENGAWA_EXTRA_INCLUDES` (e.g. the sqlite adapter fetches
 # the SQLite amalgamation). The full reference host (hosts/windows/CMakeLists.txt) composes the

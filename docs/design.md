@@ -50,6 +50,8 @@ Update speaks two modes over one manifest — **app-update** (signed asset swap,
 
 **Every other adapter is per app.** The reference `sqlite` is an ordinary, optional adapter — an app that wants durable SQL declares it (in `engawa.json`, see `cli/`) and it is compiled in; an app that declares nothing gets a host without it. `sqlite` is not part of Engawa the way `update` is; the original drift was baking it into every host as if it were.
 
+**Composition is realized per host, by the CLI, from the same `engawa.json`.** macOS generates a per-app SwiftPM package depending on exactly the declared adapters. Windows generates a per-app CMake project via `hosts/windows/engawa-host.cmake` (`engawa_add_host`): each declared adapter contributes its `hosts/windows/*.cpp` and an optional `deps.cmake` (its native dependencies, e.g. the sqlite adapter fetches the SQLite amalgamation), and a generated compose TU registers each via the `make<Package>Adapter()` factory convention. A local adapter is referenced by path; an external one is fetched by git revision. So on either OS an app is built in its own environment — the Windows toolchain never needs the macOS one — and gets a host holding exactly its declared adapters plus the mandatory `update`.
+
 `adapters/` holding both is expected, not a smell: `update` (mandatory, contract-coupled, never extracted) and `sqlite` (a reference adapter, extractable) are both adapters — only their obligation to the project differs.
 
 ## Known risks

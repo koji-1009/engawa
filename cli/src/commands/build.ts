@@ -11,8 +11,11 @@ export interface BuildOptions {
   dev?: boolean; // debug config + skip release optimizations
 }
 
-// Build the app into a codesigned .app bundle and return its path.
+// Build the app into a distributable and return its path (a codesigned .app on macOS; a plain
+// runnable folder on Windows). Per-environment: a Windows build never needs the macOS toolchain.
 export async function buildApp(argv: string[], options: BuildOptions = {}): Promise<string> {
+  if (process.platform === "win32") return buildWindowsApp(argv, options);
+
   const { flags } = parseArgs(argv);
   const appDir = resolve(flags["dir"] ?? ".");
   const manifest = readManifest(appDir);
@@ -66,6 +69,44 @@ export async function buildApp(argv: string[], options: BuildOptions = {}): Prom
 
 export async function cmdBuild(argv: string[]): Promise<void> {
   await buildApp(argv);
+}
+
+// Windows: no .app, no codesign. Build the per-app native host, then assemble a plain runnable folder
+// (EngawaHost + app/ + shell.js + engawa.json beside it). The host's HostOptions defaults resolve its
+// assets from the exe's own directory, so launching the exe just works — no environment needed.
+async function buildWindowsApp(argv: string[], options: BuildOptions): Promise<string> {
+  const { flags } = parseArgs(argv);
+  const appDir = resolve(flags["dir"] ?? ".");
+  const manifest = readManifest(appDir);
+  const assets = join(appDir, "app");
+  if (!existsSync(join(assets, "index.html"))) {
+    throw new CliError(`${assets}/index.html not found — an Engawa app serves its assets from app/`);
+  }
+
+  const home = findEngawaHome();
+  const config = options.dev === true ? "debug" : "release";
+  const hostBinary = await buildHost(home, appDir, manifest, config);
+
+  const name = appName(manifest);
+  const outDir = resolve(flags["out"] ?? join(appDir, "build"));
+  const bundle = join(outDir, name);
+  log.step(`assembling ${bundle}`);
+  rmSync(bundle, { recursive: true, force: true });
+  mkdirSync(bundle, { recursive: true });
+
+  copyFileSync(hostBinary, join(bundle, `${name}.exe`));
+  cpSync(assets, join(bundle, "app"), { recursive: true });
+  copyFileSync(join(home, "shell-js", "shell.js"), join(bundle, "shell.js"));
+  copyFileSync(join(appDir, "engawa.json"), join(bundle, "engawa.json"));
+  if (existsSync(join(appDir, "bin"))) cpSync(join(appDir, "bin"), join(bundle, "bin"), { recursive: true });
+
+  const trustRoot = join(appDir, "trust-root.txt"); // contract §7.1, present iff the app publishes updates
+  if (existsSync(trustRoot)) copyFileSync(trustRoot, join(bundle, "trust-root.txt"));
+  else log.warn("no trust-root.txt — the app cannot verify updates (run `engawa keygen`)");
+
+  // Authenticode signing is out of scope until distribution (matches the macOS ad-hoc/notarization stub).
+  log.ok(`built ${bundle}`);
+  return bundle;
 }
 
 function escapeXml(s: string): string {
