@@ -20,12 +20,19 @@ async function waitFor(cond, timeoutMs) {
 }
 
 var seq = 0;
+// Use the Windows system bsdtar on win32: it handles drive-letter (C:\…) archive paths, whereas the
+// GNU tar that ships with Git Bash misreads "C:" as a remote host ("Cannot connect to C"). Elsewhere,
+// plain `tar` from PATH.
+var TAR_BIN = process.platform === 'win32'
+  ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
+  : 'tar';
+
 // An app-update payload is a tarball of the new asset tree (§8: unpacks to a fresh directory).
 function writePayload(html) {
   var src = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-updsrc-'));
   fs.writeFileSync(path.join(src, 'index.html'), html);
   var tar = path.join(os.tmpdir(), 'engawa-upd-' + Date.now() + '-' + (seq++) + '.tar');
-  child_process.execFileSync('tar', ['-cf', tar, '-C', src, '.']);
+  child_process.execFileSync(TAR_BIN, ['-cf', tar, '-C', src, '.']);
   return tar;
 }
 

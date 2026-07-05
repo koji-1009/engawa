@@ -4,7 +4,9 @@ The contract (`spec/`) defines *what*; this document states *why it is built thi
 
 ## Thesis
 
-A desktop app is a web app plus a fixed set of native services: windows, dialogs, filesystem, notifications, processes, durable data, self-managed updates. Engawa provides exactly that set, as a **specification** — one protocol contract, implemented independently on each platform in that platform's first-class language, rendering through the OS WebView.
+A desktop app is a web app plus a fixed set of native services: windows, dialogs, filesystem, notifications, processes, durable data, self-managed updates. Engawa provides exactly that set, as a **specification** — one protocol contract, implemented independently on each platform in that platform's first-class native language, rendering through the OS WebView.
+
+Each host compiles to a native binary that calls the OS WebView directly. The app the end user runs carries no runtime prerequisite — the only dependency on the user's machine is the OS WebView itself, a system component. Build-time toolchains and SDKs are the developer's cost; the shipped app is a plain native binary.
 
 The engawa — the veranda between house and garden — is the contract layer between native and web. An Engawa app is **JS + adapters**.
 
@@ -15,7 +17,7 @@ The engawa — the veranda between house and garden — is the contract layer be
 | `spec/` | The product. Normative contract: handshake, wire protocol, command set, resilience guarantees. |
 | `conformance/` | Executable form of the spec. A host is conformant when the suite passes — on the real host and on the Node mock host. |
 | `shell-js/` | Shared JS runtime, identical bytes on every host. Owns promise correlation, invoke, events. |
-| Hosts | One per platform, no shared code. macOS: Swift + WKWebView. Windows: C# + WebView2. Linux: C++ (gtkmm) + WebKitGTK. Each is a small program on its platform's most-paved path. |
+| Hosts | One per platform, no shared code. macOS: Swift + WKWebView. Windows: C++ + WebView2. Linux: C++ (gtkmm) + WebKitGTK. Each is a small native program on its platform's most-paved path. |
 | Adapters | The extension model and the app model. 1 adapter = 1 namespace = 1 repo, consumed as a hash-pinned source dependency, compiled into the host at app build time. |
 
 Hosts implement two primitives — receive a string, evaluate a string — and a set of command handlers. Everything protocol-shaped lives in shell.js. This keeps the surface where three implementations can diverge as small as it can be.
