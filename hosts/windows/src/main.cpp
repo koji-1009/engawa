@@ -5,8 +5,13 @@
 // assembles the pieces (contract §1). The binary is native and self-contained: the end user needs no
 // runtime, only the WebView2 Evergreen system component (docs/design.md).
 #include <windows.h>
+#include <commctrl.h>
 #include <fcntl.h>
 #include <io.h>
+
+// Pull in Common Controls v6 so dialog.message can use TaskDialog for custom buttons (v5, the
+// default without a manifest, has no TaskDialog).
+#pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #include <cstdio>
 #include <optional>
@@ -74,6 +79,10 @@ int main() {
     // Per-monitor DPI awareness (must be set before any window is created): otherwise Windows
     // bitmap-stretches the window on a high-DPI display and WebView2 renders blurry.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    // Common Controls v6 (for TaskDialog in dialog.message).
+    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES};
+    InitCommonControlsEx(&icc);
 
     // The control channel is byte-exact newline-delimited JSON; keep the standard streams from
     // translating CRLF (the driver writes and expects bare '\n').

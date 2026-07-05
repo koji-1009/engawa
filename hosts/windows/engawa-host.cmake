@@ -106,5 +106,6 @@ function(engawa_add_host TARGET)
   target_link_libraries(${TARGET} PRIVATE
     "${WEBVIEW2_LOADER}"
     bcrypt ole32 oleaut32 shlwapi version shell32 user32 gdi32 advapi32
+    comctl32     # TaskDialog (dialog.message custom buttons)
     runtimeobject)  # WinRT activation (notification toasts)
 endfunction()

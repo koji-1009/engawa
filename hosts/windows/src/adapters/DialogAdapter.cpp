@@ -3,6 +3,7 @@
 // conformance mode dialogs are modal + user-driven, so the host returns a preprogrammed response
 // (dialog.__setResponse) instead of presenting UI (§ testability hook); argument validation still applies.
 #include <windows.h>
+#include <commctrl.h>  // TaskDialogIndirect (custom message-box buttons)
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -131,9 +132,39 @@ private:
     Json message(const Json& args) {
         std::string msg = ja::reqStringAllowEmpty(args, "message");  // present-but-empty legal; absent → EINVAL
         if (conformance_) return take(Json{{"button", 0}});
-        std::string title = ja::optString(args, "title").value_or("");
-        MessageBoxW(hwnd_, ToWide(msg).c_str(), ToWide(title).c_str(), MB_OK);
-        return Json{{"button", 0}};  // only the default OK button (index 0) in this path
+
+        std::wstring wtitle = ToWide(ja::optString(args, "title").value_or("Engawa"));
+        std::wstring wmsg = ToWide(msg);
+
+        // buttons (spec/commands/dialog.md): the label array, default ["OK"]; returns the clicked
+        // 0-based index. Custom labels need TaskDialog (MessageBox can't do arbitrary labels).
+        std::vector<std::wstring> labels;
+        const Json* b = ja::field(args, "buttons");
+        if (b && b->is_array())
+            for (const auto& e : *b)
+                if (e.is_string()) labels.push_back(ToWide(e.get<std::string>()));
+        if (labels.empty()) labels.push_back(L"OK");
+
+        std::vector<TASKDIALOG_BUTTON> btns;
+        for (size_t i = 0; i < labels.size(); i++)
+            btns.push_back({static_cast<int>(100 + i), labels[i].c_str()});
+
+        TASKDIALOGCONFIG cfg{};
+        cfg.cbSize = sizeof(cfg);
+        cfg.hwndParent = hwnd_;
+        cfg.pszWindowTitle = wtitle.c_str();
+        cfg.pszContent = wmsg.c_str();
+        cfg.cButtons = static_cast<UINT>(btns.size());
+        cfg.pButtons = btns.data();
+        cfg.nDefaultButton = 100;
+
+        int pressed = 0;
+        if (SUCCEEDED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr)) && pressed >= 100)
+            return Json{{"button", pressed - 100}};
+
+        // Fallback (e.g. comctl32 v6 not active): a plain OK box, default button.
+        MessageBoxW(hwnd_, wmsg.c_str(), wtitle.c_str(), MB_OK);
+        return Json{{"button", 0}};
     }
 
     HWND hwnd_;

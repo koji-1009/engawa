@@ -37,6 +37,7 @@
   on('dlg-open-dir', function () { call('dialog.open folder', 'dialog.open', { title: 'Pick a folder', directory: true }); });
   on('dlg-save', function () { call('dialog.save', 'dialog.save', { title: 'Save as', defaultName: 'engawa.txt' }); });
   on('dlg-msg', function () { call('dialog.message', 'dialog.message', { title: 'Engawa', message: 'Hello from Engawa!' }); });
+  on('dlg-msg-buttons', function () { call('dialog.message buttons (returns index)', 'dialog.message', { title: 'Choose', message: 'Pick one:', buttons: ['Yes', 'No', 'Maybe'] }); });
 
   // notification (real toast) -------------------------------------------------------------
   on('notify', function () { call('notification.show', 'notification.show', { title: 'Engawa', body: 'This is a real system toast.' }); });
