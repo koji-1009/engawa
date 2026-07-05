@@ -9,6 +9,8 @@ import { appName, type AdapterRef, type Manifest } from "./manifest.ts";
 // this app declared, build it, and return the host binary path. sqlite is compiled in only when
 // the app asks for it — never baked into every host.
 export async function buildHost(home: string, appDir: string, manifest: Manifest, config: "debug" | "release"): Promise<string> {
+  if (process.platform === "win32") return buildWindowsHost(home, manifest);
+
   const hostDir = join(appDir, "build", ".host");
   const sources = join(hostDir, "Sources", "EngawaHost");
   mkdirSync(sources, { recursive: true });
@@ -20,6 +22,23 @@ export async function buildHost(home: string, appDir: string, manifest: Manifest
   await run("swift", ["build", "--package-path", hostDir, "-c", config]);
   const binary = join(hostDir, ".build", config, "EngawaHost");
   if (!existsSync(binary)) throw new CliError(`host binary not found at ${binary}`);
+  return binary;
+}
+
+// The Windows reference host (hosts/windows) composes statically via CMake, not SwiftPM. It builds
+// one EngawaHost.exe that includes the built-ins plus the reference sqlite + update adapters. Per-app
+// adapter selection is not yet wired on Windows, so an app that declares other adapters is warned
+// that the CMake build will not add them.
+async function buildWindowsHost(home: string, manifest: Manifest): Promise<string> {
+  const scriptDir = join(home, "hosts", "windows");
+  log.step("building host (windows) via CMake");
+  await run("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(scriptDir, "build.ps1")]);
+  const binary = join(scriptDir, "build", "EngawaHost.exe");
+  if (!existsSync(binary)) throw new CliError(`host binary not found at ${binary}`);
+  const extra = manifest.adapters.filter((a) => a.package.toLowerCase() !== "sqlite");
+  if (extra.length > 0) {
+    log.warn(`windows host bundles sqlite + update statically; declared adapter(s) ${extra.map((a) => a.package).join(", ")} are not compiled in yet (per-app composition is macOS-only for now)`);
+  }
   return binary;
 }
 

@@ -73,7 +73,13 @@ void Bridge::startWebView() {
 }
 
 HRESULT Bridge::onEnvironmentCreated(HRESULT result, ICoreWebView2Environment* env) {
-    if (FAILED(result) || !env) { ExitProcess(1); }
+    if (FAILED(result) || !env) {
+        // Common causes: no WebView2 runtime, the user-data folder is locked by another instance, or
+        // no interactive desktop (e.g. a headless/service session). Report rather than exit silently.
+        fprintf(stderr, "engawa host: WebView2 environment creation failed (hr=0x%08lx)\n",
+                static_cast<unsigned long>(result));
+        ExitProcess(1);
+    }
     env_ = env;
     scheme_ = std::make_unique<SchemeHandler>(env_.Get(), liveRoot_, csp_, io_);
     return env_->CreateCoreWebView2Controller(
@@ -84,7 +90,11 @@ HRESULT Bridge::onEnvironmentCreated(HRESULT result, ICoreWebView2Environment* e
 }
 
 HRESULT Bridge::onControllerCreated(HRESULT result, ICoreWebView2Controller* controller) {
-    if (FAILED(result) || !controller) { ExitProcess(1); }
+    if (FAILED(result) || !controller) {
+        fprintf(stderr, "engawa host: WebView2 controller creation failed (hr=0x%08lx)\n",
+                static_cast<unsigned long>(result));
+        ExitProcess(1);
+    }
     controller_ = controller;
     window_.setController(controller_.Get());
     RECT bounds{};
