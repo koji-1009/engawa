@@ -1,7 +1,11 @@
 #include "NativeToast.hpp"
 
 #include <windows.h>
-#include <shobjidl.h>  // SetCurrentProcessExplicitAppUserModelID
+#include <shobjidl.h>  // SetCurrentProcessExplicitAppUserModelID, IShellLinkW
+#include <shlobj.h>    // SHGetKnownFolderPath, CLSID_ShellLink, FOLDERID_Programs
+#include <propvarutil.h>
+#include <propsys.h>   // IPropertyStore
+#include <wrl/client.h>
 
 #include <stdexcept>
 #include <string>
@@ -36,6 +40,38 @@ std::wstring escapeXml(const std::wstring& s) {
 // DisplayName) so Windows has a name to attribute the notification to. Register once in HKCU.
 const wchar_t* kAumid = L"dev.engawa.host";
 
+// Windows only surfaces toasts from an unpackaged Win32 app if a Start-Menu shortcut carries the
+// process's AppUserModelID (registry registration alone often creates-but-does-not-show the toast).
+// Create one once, pointing at this exe, with the AUMID property.
+void ensureStartMenuShortcut() {
+    PWSTR programs = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_Programs, 0, nullptr, &programs)) || !programs) return;
+    std::wstring lnk = std::wstring(programs) + L"\\Engawa.lnk";
+    CoTaskMemFree(programs);
+    if (GetFileAttributesW(lnk.c_str()) != INVALID_FILE_ATTRIBUTES) return;  // already created
+
+    wchar_t exe[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, exe, MAX_PATH) == 0) return;
+
+    Microsoft::WRL::ComPtr<IShellLinkW> link;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))) return;
+    link->SetPath(exe);
+    Microsoft::WRL::ComPtr<IPropertyStore> store;
+    if (SUCCEEDED(link.As(&store))) {
+        // PKEY_AppUserModel_ID, defined locally to avoid the INITGUID/propsys-lib dance.
+        static const PROPERTYKEY kAumidKey = {
+            {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}}, 5};
+        PROPVARIANT pv;
+        if (SUCCEEDED(InitPropVariantFromString(kAumid, &pv))) {
+            store->SetValue(kAumidKey, pv);
+            store->Commit();
+            PropVariantClear(&pv);
+        }
+    }
+    Microsoft::WRL::ComPtr<IPersistFile> file;
+    if (SUCCEEDED(link.As(&file))) file->Save(lnk.c_str(), TRUE);
+}
+
 void ensureAumidRegistered() {
     static bool done = false;
     if (done) return;
@@ -50,6 +86,7 @@ void ensureAumidRegistered() {
                        static_cast<DWORD>((wcslen(name) + 1) * sizeof(wchar_t)));
         RegCloseKey(key);
     }
+    ensureStartMenuShortcut();
 }
 
 }  // namespace

@@ -19,7 +19,7 @@ $exe = Join-Path $OUT 'native_smoke.exe'
 & cl /nologo /std:c++20 /EHsc /utf-8 /DUNICODE /D_UNICODE "/I$SRC" `
     (Join-Path $TEST 'native_smoke.cpp') (Join-Path $SRC 'NativeToast.cpp') `
     "/Fo:$OUT\" "/Fe:$exe" `
-    ole32.lib oleaut32.lib shell32.lib advapi32.lib runtimeobject.lib | Out-Host
+    ole32.lib oleaut32.lib shell32.lib shlwapi.lib advapi32.lib runtimeobject.lib | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "smoke compile failed" }
 
 & $exe

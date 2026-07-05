@@ -24,10 +24,14 @@ Window::Window(bool hidden) {
         registered = true;
     }
 
+    // Scale the default size by the display DPI (the process is per-monitor DPI aware, so window
+    // sizes are physical pixels — 1024x720 would look tiny on a 150% display).
+    UINT dpi = GetDpiForSystem();
+    int w = MulDiv(1024, dpi, 96), h = MulDiv(720, dpi, 96);
     hwnd_ = CreateWindowExW(
         0, kClassName, L"Engawa", WS_OVERLAPPEDWINDOW,
         hidden ? kOffscreen : CW_USEDEFAULT, hidden ? kOffscreen : CW_USEDEFAULT,
-        1024, 720, nullptr, nullptr, GetModuleHandleW(nullptr), this);
+        w, h, nullptr, nullptr, GetModuleHandleW(nullptr), this);
     if (!hwnd_) throw std::runtime_error("CreateWindowExW failed");
     if (!hidden) ShowWindow(hwnd_, SW_SHOWNORMAL);
 }

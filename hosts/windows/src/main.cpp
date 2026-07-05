@@ -65,6 +65,10 @@ void registerAdapters(Dispatcher& d, Bridge& bridge, Window& window, const HostO
 }  // namespace
 
 int main() {
+    // Per-monitor DPI awareness (must be set before any window is created): otherwise Windows
+    // bitmap-stretches the window on a high-DPI display and WebView2 renders blurry.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     // The control channel is byte-exact newline-delimited JSON; keep the standard streams from
     // translating CRLF (the driver writes and expects bare '\n').
     _setmode(_fileno(stdin), _O_BINARY);
