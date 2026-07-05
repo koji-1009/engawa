@@ -1,0 +1,14 @@
+{
+  "id": "dev.engawa.gallery",
+  "version": "1.0.0",
+  "name": "Engawa Gallery",
+  "adapters": [
+    {
+      "package": "sqlite",
+      "product": "EngawaSQLite",
+      "register": "SqliteAdapter()",
+      "path": "../../adapters/sqlite"
+    }
+  ],
+  "sidecars": []
+}
