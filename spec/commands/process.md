@@ -32,6 +32,27 @@ message channel (a sidecar needing binary uses files / `app://io`).
 
 `process.spawn` runs only executables listed in the app manifest (`engawa.json`, `sidecars`) and
 resolved inside the app bundle. An undeclared command, or one whose resolved path escapes the
-bundle, is `EPERM`. There is no arbitrary-path execution.
+bundle, is `EPERM`. There is no arbitrary-path execution. The allowlist is matched against the
+`command` string **as declared** — the platform resolution below happens only *after* a command
+has cleared the allowlist, so it can never widen it.
+
+## Platform executable resolution (normative)
+
+A `sidecars` entry names one logical executable; its on-disk image differs per OS. A host resolves
+a declared, in-bundle `command` to a runnable image using the host platform's conventions:
+
+- A host MUST first try the declared path verbatim, **if the OS can execute it**. On POSIX that is
+  any file with an executable bit; on Windows only a file whose extension is a platform executable
+  extension (`.exe`, `.com`, `.bat`, `.cmd`) — a bare, extension-less path is not runnable there even
+  if a file of that exact name exists.
+- Where the OS distinguishes executables by extension (Windows), a host MUST then try the declared
+  path with each platform executable extension appended, in that order, and run the first that
+  exists. A `.bat`/`.cmd` image is launched through the platform command interpreter with the same
+  stdio pipes; its exit code is the sidecar's exit code.
+- The resolved image MUST still lie inside the app bundle (the §7.2 containment guard applies to
+  the resolved path, not just the declared one).
+
+This keeps one `sidecars` declaration cross-platform: the manifest names `./bin/tool`, and each
+host build ships `tool` (POSIX) or `tool.exe`/`tool.cmd` (Windows) beside it.
 
 Errors: `EINVAL`, `EPERM`, `ESRCH`, `EIO`, `ENOSYS`.
