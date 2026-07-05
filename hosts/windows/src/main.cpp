@@ -105,8 +105,13 @@ int main() {
     bool hidden = opts.conformance || opts.autotest;  // off-screen for the suite / autotest gate
     Window window(hidden);
 
+    // Trust root (§7.1): the compiled-in key wins — a distributable can't have it swapped. Only when
+    // none is baked in (the reference/dev host) do we fall back to the environment (dev/conformance).
+    std::string trustRoot = bakedTrustRoot();
+    if (trustRoot.empty()) trustRoot = opts.trustRootB64;
+
     // Host obligation (§8): the app:// root is an A/B slot indirection, seeded from the initial tree.
-    UpdateHost updateHost(opts.dataRoot, opts.appRoot, appVersion, opts.trustRootB64);
+    UpdateHost updateHost(opts.dataRoot, opts.appRoot, appVersion, trustRoot);
     Dispatcher dispatcher;
     std::string csp = buildCsp(opts.bundleRoot);
     Bridge bridge(window, opts, dispatcher, shellJs, io, [&updateHost] { return updateHost.liveRoot(); }, csp);

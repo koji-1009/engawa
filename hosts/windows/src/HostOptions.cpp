@@ -3,8 +3,6 @@
 #include <windows.h>
 
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 
 #include "Utf.hpp"
 
@@ -55,16 +53,9 @@ HostOptions HostOptions::fromEnvironment() {
     if (o.shellJsPath.empty()) o.shellJsPath = joinPath(dir, "shell.js");
     if (o.bundleRoot.empty()) o.bundleRoot = dir;
 
-    // A distributed app (double-clicked exe, no env) reads its update trust root (§7.1) from
-    // trust-root.txt beside engawa.json when ENGAWA_TRUST_ROOT wasn't provided.
-    if (o.trustRootB64.empty()) {
-        std::ifstream f(std::filesystem::path(ToWide(o.bundleRoot)) / L"trust-root.txt", std::ios::binary);
-        if (f) {
-            std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-            if (a != std::string::npos) o.trustRootB64 = s.substr(a, b - a + 1);
-        }
-    }
-
+    // trustRootB64 holds only the environment-provided root (dev/conformance, §7.1). A distributable's
+    // real trust root is compiled into the binary — bakedTrustRoot() in the generated Compose — and is
+    // resolved in main(); it is deliberately NOT read from a file beside the executable, which could be
+    // swapped to authorize a malicious update.
     return o;
 }

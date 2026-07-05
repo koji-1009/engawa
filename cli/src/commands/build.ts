@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "../args.ts";
 import { toolExists, run } from "../exec.ts";
@@ -85,7 +85,14 @@ async function buildWindowsApp(argv: string[], options: BuildOptions): Promise<s
 
   const home = findEngawaHome();
   const config = options.dev === true ? "debug" : "release";
-  const hostBinary = await buildHost(home, appDir, manifest, config);
+
+  // The update trust root (§7.1) is COMPILED INTO the host — not shipped as a swappable file beside
+  // the exe. Read it here and hand it to the host build; the generated Compose bakes it in.
+  const trustRootPath = join(appDir, "trust-root.txt"); // present iff the app publishes updates
+  const trustRoot = existsSync(trustRootPath) ? readFileSync(trustRootPath, "utf8").trim() : undefined;
+  if (trustRoot === undefined) log.warn("no trust-root.txt — the app cannot verify updates (run `engawa keygen`)");
+
+  const hostBinary = await buildHost(home, appDir, manifest, config, trustRoot);
 
   const name = appName(manifest);
   const outDir = resolve(flags["out"] ?? join(appDir, "build"));
@@ -99,10 +106,6 @@ async function buildWindowsApp(argv: string[], options: BuildOptions): Promise<s
   copyFileSync(join(home, "shell-js", "shell.js"), join(bundle, "shell.js"));
   copyFileSync(join(appDir, "engawa.json"), join(bundle, "engawa.json"));
   if (existsSync(join(appDir, "bin"))) cpSync(join(appDir, "bin"), join(bundle, "bin"), { recursive: true });
-
-  const trustRoot = join(appDir, "trust-root.txt"); // contract §7.1, present iff the app publishes updates
-  if (existsSync(trustRoot)) copyFileSync(trustRoot, join(bundle, "trust-root.txt"));
-  else log.warn("no trust-root.txt — the app cannot verify updates (run `engawa keygen`)");
 
   // Authenticode signing is out of scope until distribution (matches the macOS ad-hoc/notarization stub).
   log.ok(`built ${bundle}`);

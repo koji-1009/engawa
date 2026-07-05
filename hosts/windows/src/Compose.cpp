@@ -9,3 +9,7 @@
 void registerAppAdapters(Dispatcher& dispatcher, IEventEmitter* emitter) {
     dispatcher.registerAdapter(makeSqliteAdapter(), emitter);
 }
+
+// Reference/dev host: no compiled-in trust root. The env-provided root (conformance driver,
+// make-notes gate, `engawa dev`) is used instead (§7.1 permits an env trust root for dev/conformance).
+std::string bakedTrustRoot() { return {}; }

@@ -28,7 +28,7 @@ else
   NOTES_GATE := bash examples/notes/gate/gate.sh
 endif
 
-.PHONY: help conformance notes clean host-macos host-windows host-windows-smoke host-linux
+.PHONY: help conformance notes clean host-macos host-windows host-windows-smoke host-linux cli-test
 
 help:
 	@echo "Engawa targets:"
@@ -61,6 +61,11 @@ host-linux:
 # scripted write/read/quit/relaunch/read-back/signed-update/relaunch (CLAUDE.md).
 notes:
 	$(NOTES_GATE)
+
+# CLI unit tests — host composition + §7.1 trust-root baking. Pure Node, no native toolchain,
+# cross-platform. Not one of the two gates; run alongside them.
+cli-test:
+	cd cli && $(NODE) --test "test/**/*.test.ts"
 
 clean:
 	rm -rf build
