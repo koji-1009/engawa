@@ -34,13 +34,21 @@ Update speaks two modes over one manifest — **app-update** (signed asset swap,
 
 **Sidecars below adapters.** App-specific native needs run as spawned processes over stdio JSON-RPC (`process.*`). Promotion path: recurring sidecar pattern → adapter repo → adapter index.
 
-**Static composition.** The host is built per app, with the app's chosen adapters compiled in. Distribution of adapters is a git commit hash. No registry, no dynamic loading, no binary distribution.
+**Static composition.** The host is built per app, with the app's chosen adapters compiled in. Distribution of adapters is a git commit hash. No registry, no dynamic loading, no binary distribution. Which adapters are mandatory versus per-app is set out in **Composition** below.
 
 **Monorepo.** A change touching spec + shell.js + conformance + host + adapter + example lands as one atomic commit; divergence among them is this architecture's failure mode. `adapters/sqlite/` mirrors the external adapter layout exactly and can be extracted verbatim.
 
 **Two verification layers.** The conformance suite defines host conformance. `make notes` — build, bundle, launch `examples/notes`, write a record, relaunch, read it back, apply a signed update, scripted — is the acceptance gate: it covers packaging, entitlements, and real-bundle behavior that conformance cannot reach. One command is the entire acceptance procedure.
 
 **Clean-room hosts.** Windows and Linux hosts are implemented from the frozen spec, shell.js, and the suite — the macOS host source is off-limits to the implementer. Spec holes are only visible to an implementer without reference-host knowledge; ambiguities resolve into the spec.
+
+## Composition
+
+**`update` is mandatory — it is part of what Engawa is.** Self-managed delivery of code is one of the two properties that make Engawa an app engine rather than a shell (above), and its trust and manifest rules (§7.1/§8) are host obligations. So `update` is contract-coupled: it versions with the contract, is never extracted, and is composed into *every* host. It is not an app's choice.
+
+**Every other adapter is per app.** The reference `sqlite` is an ordinary, optional adapter — an app that wants durable SQL declares it (in `engawa.json`, see `cli/`) and it is compiled in; an app that declares nothing gets a host without it. `sqlite` is not part of Engawa the way `update` is; the original drift was baking it into every host as if it were.
+
+`adapters/` holding both is expected, not a smell: `update` (mandatory, contract-coupled, never extracted) and `sqlite` (a reference adapter, extractable) are both adapters — only their obligation to the project differs.
 
 ## Known risks
 
