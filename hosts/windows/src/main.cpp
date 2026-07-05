@@ -13,6 +13,7 @@
 #include <string>
 
 #include "Bridge.hpp"
+#include "Compose.hpp"
 #include "ConformanceChannel.hpp"
 #include "Contract.hpp"
 #include "Dispatcher.hpp"
@@ -57,9 +58,14 @@ void registerAdapters(Dispatcher& d, Bridge& bridge, Window& window, const HostO
                                      [&window] { window.post([&window] { window.closeWindow(); }); }),
                       &bridge);
 
-    // Reference / contract-coupled adapters, statically composed (§3).
-    d.registerAdapter(makeSqliteAdapter(), &bridge);
+    // `update` is contract-coupled (§7.1/§8): it versions with the contract and is composed into
+    // EVERY host, not an app's choice (docs/design.md "Composition").
     d.registerAdapter(makeUpdateAdapter(updateHost, opts), &bridge);
+
+    // The app's declared adapters (§3 static composition). registerAppAdapters is provided by a
+    // Compose translation unit: the default in-tree build registers the reference `sqlite`; a
+    // per-app `engawa dev/build` swaps in a generated TU that registers exactly what the app declared.
+    registerAppAdapters(d, &bridge);
 }
 
 }  // namespace
