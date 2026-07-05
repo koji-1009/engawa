@@ -62,6 +62,7 @@ function buildHandlers(ctx) {
   const closeTokens = new Set();
   let tokenSeq = 0;
   let interceptClose = false;   // §4.2: false → close on the button; true → defer to the app
+  let lastCloseAllowed = null;  // last respondToClose allow decision (conformance)
 
   const shellOpenRecorded = [];
   const notificationsRecorded = [];
@@ -71,14 +72,14 @@ function buildHandlers(ctx) {
 
   // process (spec/commands/process.md) — pull streams over child_process
   const procs = new Map();
-  const newStream = () => ({ buffer: Buffer.alloc(0), eof: false, paused: false, source: null });
+  const newStream = () => ({ buffer: Buffer.alloc(0), eof: false, paused: false, everPaused: false, source: null });
   function wireStream(pid, st, which, src) {
     const stream = st[which];
     stream.source = src;
     src.on('data', (chunk) => {
       const wasEmpty = stream.buffer.length === 0;
       stream.buffer = Buffer.concat([stream.buffer, chunk]);
-      if (stream.buffer.length >= PROC_CAP) { stream.paused = true; src.pause(); }
+      if (stream.buffer.length >= PROC_CAP) { stream.paused = true; stream.everPaused = true; src.pause(); }
       if (wasEmpty) ctx.emitEvent('process.readable', { pid, stream: which });
     });
     src.on('end', () => { stream.eof = true; maybeProcExit(pid); });
@@ -198,8 +199,10 @@ function buildHandlers(ctx) {
       const token = a && a.token;
       if (typeof token !== 'number' || !closeTokens.has(token)) throw err('EINVAL', 'unknown or consumed close token');
       closeTokens.delete(token);
+      lastCloseAllowed = !!(a && a.allow);
       return null;
     },
+    'window.__lastCloseAllowed': async () => lastCloseAllowed,
     // Conformance testability hook (spec/commands/window.md): simulate a user close attempt
     // through the §4.2 gate — deferred (closeRequested) only if the app opted in.
     'window.requestClose': async () => {
@@ -287,6 +290,11 @@ function buildHandlers(ctx) {
       const eof = stream.eof && stream.buffer.length === 0;
       maybeProcExit(a.pid);
       return { data, eof };
+    },
+    'process.__wasPaused': async (a) => {   // did backpressure ever pause this stream?
+      const st = procs.get(a && a.pid);
+      if (!st) throw err('ESRCH', 'no such process: ' + (a && a.pid));
+      return (a.stream === 'stderr' ? st.stderr : st.stdout).everPaused;
     },
     'process.kill': async (a) => {
       if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');

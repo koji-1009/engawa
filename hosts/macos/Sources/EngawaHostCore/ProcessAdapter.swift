@@ -10,6 +10,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
 
     private let manifest: Manifest?
     private let emitter: EventEmitter
+    private let conformance: Bool          // gates the __wasPaused backpressure hook
     private let lock = NSLock()
     private var procs: [Int: Proc] = [:]
     private let bufferCap = 8 * 1024 * 1024
@@ -19,6 +20,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         var buffer = Data()
         var eof = false
         var paused = false
+        var everPaused = false   // latched for the conformance backpressure assertion
         init(_ handle: FileHandle) { self.handle = handle }
     }
 
@@ -38,9 +40,10 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         }
     }
 
-    init(manifest: Manifest?, emitter: EventEmitter) {
+    init(manifest: Manifest?, emitter: EventEmitter, conformance: Bool = false) {
         self.manifest = manifest
         self.emitter = emitter
+        self.conformance = conformance
     }
 
     func handle(_ cmd: String, _ args: JSONValue) async throws -> JSONValue {
@@ -50,6 +53,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         case "stdinClose": return try stdinClose(args)
         case "read": return try read(args)
         case "kill": return try kill(args)
+        case "__wasPaused" where conformance: return try wasPaused(args)
         default: throw AdapterError("ENOSYS", "unknown command: process.\(cmd)")
         }
     }
@@ -129,6 +133,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         stream.buffer.append(data)
         if stream.buffer.count >= bufferCap {
             stream.paused = true
+            stream.everPaused = true
             fh.readabilityHandler = nil   // stop draining the pipe → OS backpressure
         }
         lock.unlock()
@@ -188,6 +193,15 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         do { try proc.stdin.write(contentsOf: Data(data.utf8)) }
         catch { throw AdapterError("EIO", "stdin write failed: \(error.localizedDescription)") }
         return .null
+    }
+
+    private func wasPaused(_ args: JSONValue) throws -> JSONValue {
+        let obj = args.objectValue ?? [:]
+        let pid = Int(obj["pid"]?.numberValue ?? -1)
+        let which = obj["stream"]?.stringValue ?? "stdout"
+        lock.lock(); defer { lock.unlock() }
+        guard let proc = procs[pid] else { throw AdapterError("ESRCH", "no such process: \(pid)") }
+        return .bool((which == "stdout" ? proc.stdout : proc.stderr).everPaused)
     }
 
     // Close the sidecar's stdin so a process reading to EOF (e.g. a filter) can finish.

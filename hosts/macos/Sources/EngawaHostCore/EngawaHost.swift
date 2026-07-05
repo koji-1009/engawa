@@ -134,11 +134,11 @@ final class EngawaHost: NSObject {
             ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
             : NSPasteboard.general
         router.register(ClipboardAdapter(pasteboard: pasteboard))
-        windowController = WindowController(emitter: emitter)
+        windowController = WindowController(emitter: emitter, conformance: mode == "conformance")
         router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
         router.register(ShellOpenAdapter(conformance: mode == "conformance"))
         router.register(NotificationAdapter(conformance: mode == "conformance"))
-        router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
+        router.register(ProcessAdapter(manifest: manifest, emitter: emitter, conformance: mode == "conformance"))
         router.register(DialogAdapter(conformance: mode == "conformance"))
         router.register(UpdateAdapter(host: slots, conformance: mode == "conformance")) // contract-coupled (adapters/update), always present
         // The app's statically-composed adapters (e.g. sqlite) — only what this app declared (§3).
@@ -370,6 +370,12 @@ final class EngawaHost: NSObject {
                 case "nonAppCheck":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     Task { @MainActor [weak self] in self?.runNonAppCheck(reqId: reqId) }
+                case "simulateRenderCrash":   // §10: exercise the recovery accounting + event
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    Task { @MainActor [weak self] in
+                        let over = self?.recordRenderCrash() ?? false
+                        Out.line(["ctl": "result", "reqId": reqId, "ok": true, "value": ["over": over]])
+                    }
                 case "subscribe":
                     if let topic = ctl["topic"] as? String {
                         Task { @MainActor [weak self] in self?.runSubscribe(topic: topic) }
@@ -523,28 +529,34 @@ extension EngawaHost: WKNavigationDelegate {
 
     // §10 renderer crash recovery: reload on renderer death and signal app.renderCrashed with a
     // crash counter. Three crashes in 60 s → spec'd error screen instead of a reload loop.
-    // (Fires on real renderer crashes; a synthetic trigger for the offscreen conformance host
-    // isn't reliable on this engine — WebKit does not fire this for _killWebContentProcess when
-    // the renderer is suspended — so this recovery path is not yet exercised by the suite.)
+    // WebKit doesn't reliably fire this delegate for a synthetic kill of a suspended renderer, so
+    // the suite drives the same accounting + event through the simulateRenderCrash control hook
+    // (recordRenderCrash); the actual reload on a real crash remains beyond the suite's reach.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        let now = Date()
-        crashTimes.append(now)
-        crashTimes = crashTimes.filter { now.timeIntervalSince($0) < 60 }
-        crashCount += 1
-
-        // Emit the signal. In conformance the crash destroyed the in-page subscription, so
-        // report on the control channel directly; in app mode use the normal event path.
+        let overThreshold = recordRenderCrash()
+        // Real crash: the in-page subscription died with the renderer, so also report on the
+        // control channel (the simulateRenderCrash hook keeps the page alive and uses the event).
         if mode == "conformance" {
             Out.line(["ctl": "event", "topic": "app.renderCrashed", "payload": ["count": crashCount]])
-        } else {
-            hostEmitter?.emit("app.renderCrashed", .object(["count": .number(Double(crashCount))]))
         }
-
-        if crashTimes.count >= 3 {
+        if overThreshold {
             webView.loadHTMLString("<!doctype html><meta charset=\"utf-8\"><title>Engawa</title><h1>The app keeps crashing</h1>", baseURL: nil)
         } else {
             webView.reload()
         }
+    }
+
+    // §10 accounting + signal, shared by the real delegate and the conformance hook. Emits
+    // app.renderCrashed with the running crash count; returns whether the 3-in-60 s threshold is
+    // exceeded (→ error screen instead of another reload).
+    @discardableResult
+    func recordRenderCrash() -> Bool {
+        let now = Date()
+        crashTimes.append(now)
+        crashTimes = crashTimes.filter { now.timeIntervalSince($0) < 60 }
+        crashCount += 1
+        hostEmitter?.emit("app.renderCrashed", .object(["count": .number(Double(crashCount))]))
+        return crashTimes.count >= 3
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Out.err("navigation failed: \(error.localizedDescription)")

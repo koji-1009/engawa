@@ -62,6 +62,9 @@ struct WindowAdapter: Adapter {
             let deferred = await controller.requestCloseForTest()
             return .object(["deferred": .bool(deferred)])
 
+        case "__lastCloseAllowed" where conformance:   // the last respondToClose allow decision
+            return await controller.lastCloseAllowed.map { JSONValue.bool($0) } ?? .null
+
         case "__resizeStorm" where conformance:   // fire many resizes in one tick (§2.1 coalescing)
             let count = Int(obj["count"]?.numberValue ?? 8)
             let from = obj["from"]?.numberValue ?? 300

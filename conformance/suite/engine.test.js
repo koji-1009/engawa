@@ -15,6 +15,6 @@
     assert(typeof low.detected === 'string' && typeof low.required === 'string', 'reports detected + required');
 
     var high = await engawa.checkEngineFloor('99999');  // above the floor
-    assert(high.rejected === false, 'an above-floor engine boots normally');
+    assert(high.rejected === false && high.booted === true, 'an above-floor engine boots normally (reaches ready, not a timeout)');
   });
 })();

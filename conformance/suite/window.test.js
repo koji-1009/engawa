@@ -96,4 +96,24 @@
     assert(err, 'expected second respondToClose to reject');
     assertEqual(err.code, 'EINVAL', 'consumed token code');
   });
+
+  test('§4.2 respondToClose honors the allow decision (deny vs accept)', async function (engawa) {
+    await engawa.invoke('window.setCloseHandler', { enabled: true });
+
+    var t1 = (await engawa.invoke('window.requestClose')).deferred;
+    assertEqual(t1, true, 'opted-in close is deferred');
+    // The requestClose hook emits closeRequested; drive respondToClose with a fresh token each time.
+    var events = [];
+    var off = engawa.on('window.closeRequested', function (p) { events.push(p); });
+    await engawa.invoke('window.requestClose');
+    await waitFor(function () { return events.length > 0; }, 2000);
+    await engawa.invoke('window.respondToClose', { token: events[events.length - 1].token, allow: false });
+    assertEqual(await engawa.invoke('window.__lastCloseAllowed'), false, 'a deny was recorded as allow:false');
+
+    await engawa.invoke('window.requestClose');
+    await waitFor(function () { return events.length > 1; }, 2000);
+    await engawa.invoke('window.respondToClose', { token: events[events.length - 1].token, allow: true });
+    assertEqual(await engawa.invoke('window.__lastCloseAllowed'), true, 'an accept was recorded as allow:true');
+    off();
+  });
 })();

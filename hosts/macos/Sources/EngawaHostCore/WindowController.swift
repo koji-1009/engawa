@@ -11,14 +11,17 @@ import EngawaKit
 @MainActor
 final class WindowController: NSObject, NSWindowDelegate {
     private let emitter: EventEmitter
+    private let conformance: Bool
     private weak var window: NSWindow?
     private var pendingCloseTokens: Set<Int> = []
     private var tokenSeq = 0
     private var emittedFocusEvents = false
     private var interceptClose = false   // §4.2: false → close on the button; true → defer to the app
+    private(set) var lastCloseAllowed: Bool? = nil   // last respondToClose decision (conformance)
 
-    init(emitter: EventEmitter) {
+    init(emitter: EventEmitter, conformance: Bool = false) {
         self.emitter = emitter
+        self.conformance = conformance
     }
 
     func attach(_ window: NSWindow) {
@@ -98,6 +101,9 @@ final class WindowController: NSObject, NSWindowDelegate {
             throw AdapterError("EINVAL", "unknown or consumed close token: \(token)")
         }
         pendingCloseTokens.remove(token)
-        if allow { window?.close() }
+        lastCloseAllowed = allow
+        // In conformance we record the decision but keep the off-screen window, so the suite can
+        // assert allow-handling on both hosts without the suite host closing itself.
+        if allow && !conformance { window?.close() }
     }
 }

@@ -8,6 +8,7 @@ require('./csp.test');
 require('./injection.test');
 require('./engine.test');
 require('./storage.test');
+require('./crash.test');
 require('./limits.test');
 require('./path.test');
 require('./fs.test');

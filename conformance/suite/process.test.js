@@ -95,15 +95,20 @@
     await drain(engawa, pid);
   });
 
-  test('firehose: chunked reads drain the full volume, then exit', async function (engawa) {
-    var N = 2 * 1024 * 1024;   // 2 MiB of ASCII 'a'
+  test('firehose: backpressure pauses the pipe past the cap, then chunked reads drain it all', async function (engawa) {
+    var N = 24 * 1024 * 1024;   // 24 MiB of ASCII 'a' — well past the 8 MiB per-stream cap
     var exits = [];
     var offE = engawa.on('process.exit', function (p) { exits.push(p); });
 
     var spawned = await engawa.invoke('process.spawn', { command: './bin/echo-sidecar', args: ['firehose:' + N] });
     var pid = spawned.pid;
 
-    var total = 0, eof = false, deadline = Date.now() + 15000;
+    // Stop reading long enough for the buffer to fill and the host to apply OS backpressure.
+    await delay(600);
+    assertEqual(await engawa.invoke('process.__wasPaused', { pid: pid, stream: 'stdout' }), true,
+      'the pipe was paused once the buffer hit the cap (real backpressure, not unbounded buffering)');
+
+    var total = 0, eof = false, deadline = Date.now() + 20000;
     while (!eof && Date.now() < deadline) {
       var r = await engawa.invoke('process.read', { pid: pid, stream: 'stdout', maxBytes: 65536 });
       total += r.data.length;   // ASCII, so char length == byte length
@@ -112,7 +117,7 @@
     }
     await waitFor(function () { return exits.some(function (e) { return e.pid === pid; }); }, 3000);
     offE();
-    assertEqual(total, N, 'received the full firehose volume');
+    assertEqual(total, N, 'received the full firehose volume after resuming (pause/resume cycle works)');
   });
 
   test('process.spawn of an undeclared command → EPERM (§7.2)', async function (engawa) {

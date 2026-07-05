@@ -46,10 +46,12 @@ function checkEngineFloor(fakeVersion) {
         if (!line.trim()) continue;
         let m; try { m = JSON.parse(line); } catch { continue; }
         if (m.ctl === 'floorRejected') finish({ rejected: true, detected: m.detected, required: m.required });
-        else if (m.ctl === 'ready') finish({ rejected: false });
+        else if (m.ctl === 'ready') finish({ rejected: false, booted: true });
       }
     });
-    setTimeout(() => finish({ rejected: false, timeout: true }), 8000);
+    // A hang (no floorRejected, no ready) is a FAILURE, not a pass — booted stays false so the
+    // above-floor assertion (booted === true) can tell a real boot from a host that never started.
+    setTimeout(() => finish({ rejected: false, booted: false, timeout: true }), 8000);
   });
 }
 
@@ -243,6 +245,8 @@ function connectMacosHost() {
     ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
     // §6 injection matrix — reports whether the app:// iframe received __shell.
     frameCheck: () => request({ ctl: 'frameCheck' }),
+    // §10 — run the renderer-crash recovery accounting + emit app.renderCrashed.
+    simulateRenderCrash: () => request({ ctl: 'simulateRenderCrash' }),
     // §6/§7 — injection state on a non-app (about:blank) document, via a dedicated host.
     checkNonAppInjection: () => checkNonAppInjection(),
     // §9 engine floor — spawns a throwaway host with a faked engine version.

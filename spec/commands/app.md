@@ -6,6 +6,10 @@
 | `app.engineInfo` | — | `{ engine, engineVersion, hostVersion, contractVersion }` | The WebView engine, the host build, and the contract version in force (contract §9). All string fields. |
 | `app.quit` | — | `null` | Requests orderly application termination. Returns before the process exits. |
 
+Events:
+
+- `app.renderCrashed` — payload `{ count }`. Emitted after the host recovers from a renderer-process crash (contract §10): the WebView is reloaded and this fires with the running crash count (from 1). Three crashes within 60 s trip a spec'd error screen instead of another reload.
+
 Normative:
 
 - `app.engineInfo.contractVersion` MUST equal `engawa.contractVersion` (§1.1) — one source of truth for the running contract.

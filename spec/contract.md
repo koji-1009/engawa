@@ -205,7 +205,7 @@ Mode semantics:
 
 ## 10. Runtime resilience (normative)
 
-- **Renderer crash recovery.** A host MUST reload on renderer-process death and emit `app.renderCrashed` (with crash counter) after recovery. Silent white screens are non-conformant. Three crashes in 60 s → spec'd error screen instead of a reload loop.
+- **Renderer crash recovery.** A host MUST reload on renderer-process death and emit `app.renderCrashed` with `payload: { count }` (the running crash count, from 1) after recovery. Silent white screens are non-conformant. Three crashes in 60 s → spec'd error screen instead of a reload loop.
 - **Storage durability.** WebView-managed storage (IndexedDB, localStorage, caches) is cache: engines may evict it and the contract does not fight them. Durable data belongs in `fs` under `path.appData` or in a durable-storage adapter (e.g. `sqlite`). The conformance suite wipes WebView storage between runs and asserts the app still boots.
 
 ## 11. Conformance
