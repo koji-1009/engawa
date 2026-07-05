@@ -51,6 +51,50 @@
     assert(exits.some(function (e) { return e.pid === pid && typeof e.code === 'number'; }), 'process.exit carried a code');
   });
 
+  test('process.stdinClose lets a read-to-EOF sidecar finish; post-exit ops are no-ops', async function (engawa) {
+    var exits = [];
+    var offE = engawa.on('process.exit', function (p) { exits.push(p); });
+    var spawned = await engawa.invoke('process.spawn', { command: './bin/echo-sidecar' });
+    var pid = spawned.pid;
+    await engawa.invoke('process.stdinWrite', { pid: pid, data: 'bye\n' });
+    await engawa.invoke('process.stdinClose', { pid: pid });   // sidecar sees stdin end → exit 0
+    await drain(engawa, pid);
+    await waitFor(function () { return exits.some(function (e) { return e.pid === pid; }); }, 3000);
+    offE();
+    assert(exits.some(function (e) { return e.pid === pid; }), 'process.exit fired after stdinClose');
+    assertEqual(await engawa.invoke('process.kill', { pid: pid }), null, 'kill after exit is a no-op, not ESRCH');
+    var r = await engawa.invoke('process.read', { pid: pid, stream: 'stdout', maxBytes: 16 });
+    assertEqual(r.eof, true, 'read after exit reports eof');
+  });
+
+  test('process.read makes forward progress when maxBytes < the next character', async function (engawa) {
+    var spawned = await engawa.invoke('process.spawn', { command: './bin/echo-sidecar' });
+    var pid = spawned.pid;
+    await engawa.invoke('process.stdinWrite', { pid: pid, data: 'あ' });   // one 3-byte character
+    var got = '', deadline = Date.now() + 3000;
+    while (got.length === 0 && Date.now() < deadline) {
+      var r = await engawa.invoke('process.read', { pid: pid, stream: 'stdout', maxBytes: 1 });
+      got += r.data;
+      if (!r.data) await delay(20);
+    }
+    assertEqual(got, 'あ', 'a 1-byte read still returned the whole 3-byte character (no livelock)');
+    await engawa.invoke('process.kill', { pid: pid });
+    await drain(engawa, pid);
+  });
+
+  test('process.read rejects a bad stream or negative maxBytes with EINVAL', async function (engawa) {
+    var spawned = await engawa.invoke('process.spawn', { command: './bin/echo-sidecar' });
+    var pid = spawned.pid;
+    for (var i = 0; i < 2; i++) {
+      var call = i === 0 ? { pid: pid, stream: 'stdlog' } : { pid: pid, stream: 'stdout', maxBytes: -1 };
+      var err = null;
+      try { await engawa.invoke('process.read', call); } catch (e) { err = e; }
+      assert(err && err.code === 'EINVAL', 'expected EINVAL');
+    }
+    await engawa.invoke('process.kill', { pid: pid });
+    await drain(engawa, pid);
+  });
+
   test('firehose: chunked reads drain the full volume, then exit', async function (engawa) {
     var N = 2 * 1024 * 1024;   // 2 MiB of ASCII 'a'
     var exits = [];

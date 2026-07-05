@@ -94,11 +94,13 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
     }
 
     private func statusLocked() -> JSONValue {
-        .object([
+        let pending = readString(pendingFile)
+        return .object([
             "currentSlot": .string(readString(currentFile) ?? "a"),
             "bootingSlot": .string(bootedSlot),
             "version": .string(readString(versionFile) ?? "0.0.0"),
-            "hasPending": .bool(readString(pendingFile) != nil),
+            "hasPending": .bool(pending != nil),
+            "pendingSlot": pending.map { JSONValue.string($0) } ?? .null,
         ])
     }
 
@@ -111,16 +113,18 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
         }
         let digest = SHA256.hash(data: payload)
         let computedHex = digest.map { String(format: "%02x", $0) }.joined()
-        guard computedHex == hashHex else { throw AdapterError("EHASH", "payload hash mismatch") }
+        guard computedHex == hashHex.lowercased() else { throw AdapterError("EHASH", "payload hash mismatch") }
         guard let trustRoot = trustRoot else { throw AdapterError("ESIGNATURE", "no trust root embedded") }
         guard let sig = Data(base64Encoded: signatureB64) else { throw AdapterError("ESIGNATURE", "malformed signature") }
         guard trustRoot.isValidSignature(sig, for: Data(digest)) else {
             throw AdapterError("ESIGNATURE", "signature verification failed")
         }
 
-        // Verified: unpack the payload tarball into a fresh non-live slot (§8).
-        let current = readString(currentFile) ?? "a"
-        let target = current == "a" ? "b" : "a"
+        // Verified: unpack the payload into the non-LIVE slot (§8). The target is the opposite of
+        // the booted slot, never `current`: while a pending slot is booted-but-unconfirmed,
+        // `bootedSlot != current`, and choosing by `current` would target the live slot and
+        // destroy the assets app:// is serving. Opposite-of-booted is always the safe scratch slot.
+        let target = bootedSlot == "a" ? "b" : "a"
         let targetDir = slotDir(target)
         try? FileManager.default.removeItem(at: targetDir)
         try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)

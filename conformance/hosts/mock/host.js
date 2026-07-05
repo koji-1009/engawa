@@ -29,10 +29,24 @@ function resolveSidecar(command) {
   return resolved;
 }
 
-// Longest byte length ≤ take that does not split a UTF-8 sequence.
+// Longest byte length ≤ take whose bytes form only COMPLETE UTF-8 sequences — so a read never
+// emits a partial character, including when take == buf.length and the buffer's tail is an
+// incomplete multibyte sequence still awaiting its continuation bytes on the pipe.
 function validUtf8End(buf, take) {
-  let end = take;
-  while (end > 0 && end < buf.length && (buf[end] & 0xc0) === 0x80) end--;
+  let end = Math.min(Math.max(take, 0), buf.length);
+  while (end > 0) {
+    let i = end - 1;
+    while (i > 0 && (buf[i] & 0xc0) === 0x80 && end - i < 4) i--;   // step back to the lead byte
+    const lead = buf[i];
+    let seqLen;
+    if ((lead & 0x80) === 0) seqLen = 1;
+    else if ((lead & 0xe0) === 0xc0) seqLen = 2;
+    else if ((lead & 0xf0) === 0xe0) seqLen = 3;
+    else if ((lead & 0xf8) === 0xf0) seqLen = 4;
+    else seqLen = 1;                       // invalid lead — let it decode to a replacement char
+    if (i + seqLen <= end) break;          // the last sequence is complete
+    end = i;                               // incomplete tail → drop it and re-check
+  }
   return end;
 }
 
@@ -239,18 +253,32 @@ function buildHandlers(ctx) {
       if (typeof a.data !== 'string') throw err('EINVAL', 'data required');
       const st = procs.get(a.pid);
       if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      if (st.exitEmitted) return null;   // already exited: no-op (spec/commands/process.md)
       st.proc.stdin.write(Buffer.from(a.data, 'utf8'));
+      return null;
+    },
+    'process.stdinClose': async (a) => {
+      if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
+      const st = procs.get(a.pid);
+      if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      if (st.exitEmitted) return null;   // already exited: no-op
+      st.proc.stdin.end();
       return null;
     },
     'process.read': async (a) => {
       if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
       const st = procs.get(a.pid);
       if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      if (a.stream !== undefined && a.stream !== 'stdout' && a.stream !== 'stderr') throw err('EINVAL', 'bad stream');
+      if (a.maxBytes !== undefined && (typeof a.maxBytes !== 'number' || a.maxBytes < 0)) throw err('EINVAL', 'bad maxBytes');
       const which = a.stream === 'stderr' ? 'stderr' : 'stdout';
       const stream = st[which];
       const maxBytes = typeof a.maxBytes === 'number' ? a.maxBytes : 65536;
       const take = Math.min(Math.max(maxBytes, 0), stream.buffer.length);
-      const end = validUtf8End(stream.buffer, take);
+      let end = validUtf8End(stream.buffer, take);
+      // Forward progress: if maxBytes was too small for the next fully-buffered character, return
+      // that whole character anyway (§4.1) so a tiny maxBytes never livelocks.
+      if (end === 0 && stream.buffer.length > 0) end = validUtf8End(stream.buffer, Math.min(4, stream.buffer.length));
       const data = stream.buffer.toString('utf8', 0, end);
       stream.buffer = stream.buffer.subarray(end);
       if (stream.paused && !stream.eof && stream.buffer.length < PROC_CAP && stream.source) {
@@ -264,6 +292,7 @@ function buildHandlers(ctx) {
       if (!a || typeof a.pid !== 'number') throw err('EINVAL', 'pid required');
       const st = procs.get(a.pid);
       if (!st) throw err('ESRCH', 'no such process: ' + a.pid);
+      if (st.exitEmitted) return null;   // already exited: no-op
       st.proc.kill('SIGTERM');
       return null;
     },

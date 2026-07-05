@@ -52,6 +52,37 @@ test('update: sign → stage → relaunch → confirmBoot adopts the pending slo
   fs.rmSync(payload, { force: true });
 });
 
+test('update: staging again while a pending slot is booted never targets the live slot', async function (engawa) {
+  if (!has(engawa)) return;
+  var st0 = await engawa.invoke('update.status');
+  var pending = other(st0.currentSlot);
+
+  var p1 = writePayload('<title>first</title>');
+  var s1 = engawa.signFile(p1);
+  await engawa.invoke('update.stageAppUpdate', { payloadPath: p1, hash: s1.hash, signature: s1.signature, version: '1.1.0' });
+  assertEqual((await engawa.invoke('update.status')).pendingSlot, pending, 'first stage targets the non-live slot');
+
+  // Boot the pending slot but do NOT confirm — now bootingSlot != currentSlot.
+  var rl = await engawa.invoke('update.__relaunch');
+  assertEqual(rl.bootingSlot, pending, 'booted the pending slot, unconfirmed');
+
+  // Stage a second update while the pending slot is the live one. It must target the OTHER slot
+  // (the old current), never the slot app:// is currently serving — else the live root is wiped.
+  var p2 = writePayload('<title>second</title>');
+  var s2 = engawa.signFile(p2);
+  await engawa.invoke('update.stageAppUpdate', { payloadPath: p2, hash: s2.hash, signature: s2.signature, version: '1.2.0' });
+  var st2 = await engawa.invoke('update.status');
+  assert(st2.pendingSlot !== rl.bootingSlot, 'second stage did not target the live (booted) slot');
+  assertEqual(st2.pendingSlot, st0.currentSlot, 'second stage targeted the non-live slot');
+
+  // Clean up: roll the unconfirmed pending back (auto-rollback) so later tests start fresh.
+  for (var i = 0; i < 5 && (await engawa.invoke('update.status')).hasPending; i++) {
+    await engawa.invoke('update.__relaunch');
+  }
+  assertEqual((await engawa.invoke('update.status')).hasPending, false, 'pending cleared for later tests');
+  fs.rmSync(p1, { force: true }); fs.rmSync(p2, { force: true });
+});
+
 test('update: bad signature → ESIGNATURE, no slot change', async function (engawa) {
   if (!has(engawa)) return;
   var st0 = await engawa.invoke('update.status');

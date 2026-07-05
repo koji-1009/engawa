@@ -6,10 +6,12 @@ import EngawaKit
 public final class UpdateAdapter: Adapter, @unchecked Sendable {
     public let namespace = "update"
     private let host: UpdateHost
+    private let conformance: Bool        // gates the __relaunch testability hook
     private var emitter: EventEmitter?   // set once in attach
 
-    public init(host: UpdateHost) {
+    public init(host: UpdateHost, conformance: Bool = false) {
         self.host = host
+        self.conformance = conformance
     }
 
     public func attach(_ emitter: EventEmitter) {
@@ -44,7 +46,7 @@ public final class UpdateAdapter: Adapter, @unchecked Sendable {
             // full-update handoff: the OS-native replacement is out of contract scope (§8).
             return .object(["handoff": .bool(true)])
 
-        case "__relaunch":   // conformance-only testability hook
+        case "__relaunch" where conformance:   // conformance-only testability hook
             return host.relaunchForTest()
 
         default:

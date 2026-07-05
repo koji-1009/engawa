@@ -94,9 +94,11 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         var rel = url.path
         if rel.isEmpty || rel == "/" { rel = "/index.html" }
-        // Resolve within root; reject traversal outside it.
+        // Resolve within root; reject traversal outside it. Compare with a trailing separator (or
+        // exact match) so a sibling like `<root>.bak` / `<root>SECRET` cannot satisfy the prefix.
         let candidate = root.appendingPathComponent(rel).standardizedFileURL
-        guard candidate.path.hasPrefix(root.standardizedFileURL.path) else {
+        let rootPath = root.standardizedFileURL.path
+        guard candidate.path == rootPath || candidate.path.hasPrefix(rootPath + "/") else {
             respondText(task, "forbidden", mime: "text/plain", status: 403)
             return
         }

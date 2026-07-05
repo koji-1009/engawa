@@ -140,7 +140,7 @@ final class EngawaHost: NSObject {
         router.register(NotificationAdapter(conformance: mode == "conformance"))
         router.register(ProcessAdapter(manifest: manifest, emitter: emitter))
         router.register(DialogAdapter(conformance: mode == "conformance"))
-        router.register(UpdateAdapter(host: slots)) // contract-coupled adapter (adapters/update), always present
+        router.register(UpdateAdapter(host: slots, conformance: mode == "conformance")) // contract-coupled (adapters/update), always present
         // The app's statically-composed adapters (e.g. sqlite) — only what this app declared (§3).
         for adapter in appAdapters { router.register(adapter) }
         capabilities = router.namespaces

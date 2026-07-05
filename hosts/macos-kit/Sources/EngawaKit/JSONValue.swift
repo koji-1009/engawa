@@ -37,6 +37,9 @@ public indirect enum JSONValue: Sendable {
         case .bool(let b):
             return NSNumber(value: b)   // boolean-typed NSNumber → JSON true/false
         case .number(let d):
+            // JSON has no NaN/Infinity; match JS `JSON.stringify` (→ null) so a non-finite value
+            // from an adapter can never make the whole delivery batch fail to serialize.
+            if !d.isFinite { return NSNull() }
             // Render integral values without a fractional part for clean JSON.
             if d.rounded() == d && abs(d) < 9.007e15 { return NSNumber(value: Int(d)) }
             return NSNumber(value: d)

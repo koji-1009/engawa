@@ -95,7 +95,7 @@ Built-in namespaces (§4) are adapters that ship in-tree. There is no privileged
 | `clipboard` | `readText`, `writeText` |
 | `shellOpen` | `openExternal`, `revealInFolder` |
 | `notification` | `show` |
-| `process` | `spawn`, `stdinWrite`, `read`, `kill` |
+| `process` | `spawn`, `stdinWrite`, `stdinClose`, `read`, `kill` |
 | `app` | `version`, `engineInfo`, `quit` |
 
 Events v1: `window.focus`, `window.blur`, `window.resize`, `window.closeRequested`, `process.readable`, `process.exit`, `app.renderCrashed`.

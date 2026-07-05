@@ -1,8 +1,10 @@
 import Foundation
 
 // Single-use tokens for the binary I/O channel (contract §5a). fs.openRead/openWrite mint a
-// token bound to a path + direction; the app:// scheme handler redeems it exactly once. Tokens
-// expire after 30 s idle. Shared between the fs adapter (mint) and the scheme handler (redeem).
+// token bound to a path + direction; the app:// scheme handler redeems it exactly once. A token
+// expires 30 s after it is minted; expired-but-never-redeemed tokens are swept on the next mint,
+// so an app that mints without fetching cannot grow the map without bound. Shared between the fs
+// adapter (mint) and the scheme handler (redeem).
 final class IoTokenStore: @unchecked Sendable {
     enum Mode { case read, write }
     struct Entry { let path: String; let mode: Mode; let created: Date }
@@ -13,7 +15,11 @@ final class IoTokenStore: @unchecked Sendable {
 
     func mint(path: String, mode: Mode) -> String {
         let token = UUID().uuidString
-        lock.lock(); tokens[token] = Entry(path: path, mode: mode, created: Date()); lock.unlock()
+        let now = Date()
+        lock.lock()
+        tokens = tokens.filter { now.timeIntervalSince($0.value.created) <= ttl }   // sweep expired
+        tokens[token] = Entry(path: path, mode: mode, created: now)
+        lock.unlock()
         return token
     }
 

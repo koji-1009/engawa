@@ -47,6 +47,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         switch cmd {
         case "spawn": return try spawn(args)
         case "stdinWrite": return try stdinWrite(args)
+        case "stdinClose": return try stdinClose(args)
         case "read": return try read(args)
         case "kill": return try kill(args)
         default: throw AdapterError("ENOSYS", "unknown command: process.\(cmd)")
@@ -85,7 +86,10 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
                         stdout: stdoutPipe.fileHandleForReading,
                         stderr: stderrPipe.fileHandleForReading)
 
-        lock.lock(); procs[pid] = proc; lock.unlock()
+        lock.lock()
+        procs = procs.filter { !$0.value.exitEmitted }   // sweep tombstones of finished processes
+        procs[pid] = proc
+        lock.unlock()
 
         proc.stdout.handle.readabilityHandler = { [weak self] fh in self?.onData(pid: pid, which: "stdout", fh: fh) }
         proc.stderr.handle.readabilityHandler = { [weak self] fh in self?.onData(pid: pid, which: "stderr", fh: fh) }
@@ -141,6 +145,8 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
         let pid = Int(pidD)
         let which = obj["stream"]?.stringValue ?? "stdout"
+        guard which == "stdout" || which == "stderr" else { throw AdapterError("EINVAL", "bad stream: \(which)") }
+        if let mb = obj["maxBytes"]?.numberValue, mb < 0 { throw AdapterError("EINVAL", "bad maxBytes") }
         let maxBytes = Int(obj["maxBytes"]?.numberValue ?? 65536)
 
         lock.lock()
@@ -148,7 +154,12 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         let stream = which == "stdout" ? proc.stdout : proc.stderr
 
         let take = min(max(maxBytes, 0), stream.buffer.count)
-        let (text, consumed) = Self.validUTF8Prefix(stream.buffer, upTo: take)
+        var (text, consumed) = Self.validUTF8Prefix(stream.buffer, upTo: take)
+        // Forward progress (§4.1): if maxBytes was too small for the next fully-buffered character,
+        // return that whole character anyway so a tiny maxBytes never livelocks.
+        if consumed == 0 && !stream.buffer.isEmpty {
+            (text, consumed) = Self.validUTF8Prefix(stream.buffer, upTo: min(4, stream.buffer.count))
+        }
         if consumed > 0 { stream.buffer.removeFirst(consumed) }
 
         // Resume the pipe if it was paused for backpressure and has fallen below the cap.
@@ -173,8 +184,22 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         let proc = procs[Int(pidD)]
         lock.unlock()
         guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
         do { try proc.stdin.write(contentsOf: Data(data.utf8)) }
         catch { throw AdapterError("EIO", "stdin write failed: \(error.localizedDescription)") }
+        return .null
+    }
+
+    // Close the sidecar's stdin so a process reading to EOF (e.g. a filter) can finish.
+    private func stdinClose(_ args: JSONValue) throws -> JSONValue {
+        let obj = args.objectValue ?? [:]
+        guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
+        lock.lock()
+        let proc = procs[Int(pidD)]
+        lock.unlock()
+        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
+        try? proc.stdin.close()
         return .null
     }
 
@@ -185,6 +210,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         let proc = procs[Int(pidD)]
         lock.unlock()
         guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
         proc.process.terminate()
         return .null
     }
@@ -197,7 +223,19 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         let drained = proc.exited && !proc.exitEmitted
             && proc.stdout.eof && proc.stderr.eof
             && proc.stdout.buffer.isEmpty && proc.stderr.buffer.isEmpty
-        if drained { proc.exitEmitted = true }
+        if drained {
+            proc.exitEmitted = true
+            // Free the pipes/buffers so FileHandles don't accumulate, but keep a lightweight
+            // tombstone: a still-draining app must be able to read eof:true and kill is a no-op.
+            // The tombstone is swept on the next spawn, so the map stays bounded.
+            proc.stdout.handle.readabilityHandler = nil
+            proc.stderr.handle.readabilityHandler = nil
+            try? proc.stdin.close()
+            try? proc.stdout.handle.close()
+            try? proc.stderr.handle.close()
+            proc.stdout.buffer = Data()
+            proc.stderr.buffer = Data()
+        }
         let code = proc.exitCode
         lock.unlock()
 

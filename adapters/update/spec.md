@@ -8,7 +8,7 @@ presence. Speaks two modes over one manifest (§8): app-update (signed asset swa
 
 | Command | Args | Returns | Notes |
 |---------|------|---------|-------|
-| `update.status` | — | `{ currentSlot, bootingSlot, version, hasPending }` | Current A/B slot state. |
+| `update.status` | — | `{ currentSlot, bootingSlot, version, hasPending, pendingSlot }` | Current A/B slot state. `pendingSlot` is the slot a staged update occupies (or `null`); it is always the non-live slot. |
 | `update.evaluate` | `{ manifest, provided }` | `{ mode, version }` | §8 compatibility rule: `mode` is `"app-update"` if the running base (`provided.contractProvided` + `provided.capabilities`) satisfies `manifest.app.contractRequired`/`capabilitiesRequired`, else `"full-update"` (and `update.readyToInstall` is emitted). |
 | `update.stageAppUpdate` | `{ payloadPath, hash, signature, version }` | `{ staged }` | Host verifies (§7.1) then unpacks into the non-live slot and reserves adoption (`pending`, the single atomic commit point). Bad hash → `EHASH`; bad/absent signature → `ESIGNATURE`. |
 | `update.confirmBoot` | — | `null` | The app initialized on the pending slot: adopt it (§8). **Required** — an app that never calls it cannot be updated. |
