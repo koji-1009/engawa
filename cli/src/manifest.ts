@@ -58,6 +58,19 @@ export function readManifest(dir: string): Manifest {
   return manifest;
 }
 
+// The register/product fields are interpolated into generated Swift, so constrain them: product
+// is a module identifier; register is a single constructor expression, no statement breakers.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const CONSTRUCTOR = /^[A-Za-z_][A-Za-z0-9_.]*\([^)('"`;{}[\]]*\)$/;
+
+// SwiftPM derives a package's identity from its location's last path component (lowercased),
+// minus a trailing .git for git URLs. The manifest's `package` must equal that, or the generated
+// `.product(package:)` won't resolve.
+function identityOf(ref: { path?: string; url?: string }): string {
+  const loc = (ref.url ?? ref.path ?? "").replace(/\/+$/, "");
+  return (loc.split("/").pop() ?? "").replace(/\.git$/i, "").toLowerCase();
+}
+
 function parseAdapters(raw: unknown): AdapterRef[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new CliError("engawa.json: `adapters` must be an array");
@@ -67,13 +80,22 @@ function parseAdapters(raw: unknown): AdapterRef[] {
     for (const key of ["package", "product", "register"]) {
       if (typeof a[key] !== "string" || a[key] === "") throw new CliError(`engawa.json: adapters[${i}].${key} (string) is required`);
     }
-    const hasPath = typeof a["path"] === "string";
-    const hasGit = typeof a["url"] === "string";
-    if (hasPath === hasGit) throw new CliError(`engawa.json: adapters[${i}] needs exactly one of \`path\` or \`url\``);
-    if (hasGit && typeof a["revision"] !== "string") throw new CliError(`engawa.json: adapters[${i}].revision (a commit hash) is required with \`url\``);
+    if (!IDENTIFIER.test(a["product"] as string)) throw new CliError(`engawa.json: adapters[${i}].product must be a module identifier`);
+    if (!CONSTRUCTOR.test(a["register"] as string)) throw new CliError(`engawa.json: adapters[${i}].register must be a single constructor expression, e.g. "SqliteAdapter()"`);
+
+    const hasPath = typeof a["path"] === "string" && a["path"] !== "";
+    const hasGit = typeof a["url"] === "string" && a["url"] !== "";
+    if (hasPath === hasGit) throw new CliError(`engawa.json: adapters[${i}] needs exactly one of a non-empty \`path\` or \`url\``);
+    if (hasGit && (typeof a["revision"] !== "string" || a["revision"] === "")) throw new CliError(`engawa.json: adapters[${i}].revision (a commit hash) is required with \`url\``);
+
     const ref: AdapterRef = { package: a["package"] as string, product: a["product"] as string, register: a["register"] as string };
     if (hasPath) ref.path = a["path"] as string;
     if (hasGit) { ref.url = a["url"] as string; ref.revision = a["revision"] as string; }
+
+    const identity = identityOf(ref);
+    if (ref.package.toLowerCase() !== identity) {
+      throw new CliError(`engawa.json: adapters[${i}].package "${ref.package}" must match the ${hasGit ? "git repo" : "path"} basename "${identity}" (SwiftPM identity), or the product won't resolve`);
+    }
     return ref;
   });
 }
