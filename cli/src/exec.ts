@@ -22,9 +22,13 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
   });
 }
 
+// Is `cmd` on PATH? Uses the platform's own lookup (`where` on Windows, `which` on POSIX resolved via
+// PATH — not a hardcoded /usr/bin/which, which is absent on Windows and some distros), so `engawa info`
+// reports the toolchain correctly on every OS.
 export async function toolExists(cmd: string): Promise<boolean> {
+  const probe = process.platform === "win32" ? "where" : "which";
   try {
-    await run("/usr/bin/which", [cmd], { quiet: true });
+    await run(probe, [cmd], { quiet: true });
     return true;
   } catch {
     return false;

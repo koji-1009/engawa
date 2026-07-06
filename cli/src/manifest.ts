@@ -67,8 +67,10 @@ const CONSTRUCTOR = /^[A-Za-z_][A-Za-z0-9_.]*\([^)('"`;{}[\]]*\)$/;
 // minus a trailing .git for git URLs. The manifest's `package` must equal that, or the generated
 // `.product(package:)` won't resolve.
 function identityOf(ref: { path?: string; url?: string }): string {
-  const loc = (ref.url ?? ref.path ?? "").replace(/\/+$/, "");
-  return (loc.split("/").pop() ?? "").replace(/\.git$/i, "").toLowerCase();
+  // URLs always use "/"; local paths may use the platform separator ("\" on Windows), so split on
+  // both. Strip trailing separators first so a path ending in a slash still yields the basename.
+  const loc = (ref.url ?? ref.path ?? "").replace(/[/\\]+$/, "");
+  return (loc.split(/[/\\]/).pop() ?? "").replace(/\.git$/i, "").toLowerCase();
 }
 
 function parseAdapters(raw: unknown): AdapterRef[] {
