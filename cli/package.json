@@ -11,6 +11,7 @@
   },
   "scripts": {
     "engawa": "node src/main.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "files": [

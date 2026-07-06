@@ -5,7 +5,10 @@
 # Node
 node_modules/
 
-# Engawa build output (bundles, keys generated at build time)
+# Engawa build output (bundles, keys generated at build time). Also covers the Windows host's CMake
+# output (hosts/windows/build/) — a native C++ + WebView2 exe, no .NET artifacts. `build/` is
+# unanchored so it matches at any depth; it does not touch bin/ dirs like the conformance sidecar
+# fixture (conformance/fixtures/bundle/bin/).
 build/
 
 # macOS

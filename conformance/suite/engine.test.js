@@ -10,11 +10,16 @@
   test('§9 a below-floor engine is rejected (no boot); an above-floor engine boots', async function (engawa) {
     if (!engawa.checkEngineFloor) return;   // requires a real host
 
-    var low = await engawa.checkEngineFloor('600.0');   // below the 605.1.15 floor
+    // The floor is per-engine (WebKit 605.1.15 on macOS, a Chromium major on WebView2), so the
+    // straddle versions are the driver's to supply — a fixed '600.0' is below WebKit's floor but
+    // *above* any WebView2 floor. A driver that names no samples falls back to the WebKit values.
+    var samples = engawa.engineFloorSamples || { below: '600.0', above: '99999' };
+
+    var low = await engawa.checkEngineFloor(samples.below);   // below the host's engine floor
     assert(low.rejected === true, 'a below-floor engine must be rejected with no partial boot');
     assert(typeof low.detected === 'string' && typeof low.required === 'string', 'reports detected + required');
 
-    var high = await engawa.checkEngineFloor('99999');  // above the floor
+    var high = await engawa.checkEngineFloor(samples.above);  // above the floor
     assert(high.rejected === false && high.booted === true, 'an above-floor engine boots normally (reaches ready, not a timeout)');
   });
 })();

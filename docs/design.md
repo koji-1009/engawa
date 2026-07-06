@@ -4,7 +4,9 @@ The contract (`spec/`) defines *what*; this document states *why it is built thi
 
 ## Thesis
 
-A desktop app is a web app plus a fixed set of native services: windows, dialogs, filesystem, notifications, processes, durable data, self-managed updates. Engawa provides exactly that set, as a **specification** — one protocol contract, implemented independently on each platform in that platform's first-class language, rendering through the OS WebView.
+A desktop app is a web app plus a fixed set of native services: windows, dialogs, filesystem, notifications, processes, durable data, self-managed updates. Engawa provides exactly that set, as a **specification** — one protocol contract, implemented independently on each platform in that platform's first-class native language, rendering through the OS WebView.
+
+Each host compiles to a native binary that calls the OS WebView directly. The app the end user runs carries no runtime prerequisite — the only dependency on the user's machine is the OS WebView itself, a system component. Build-time toolchains and SDKs are the developer's cost; the shipped app is a plain native binary.
 
 The engawa — the veranda between house and garden — is the contract layer between native and web. An Engawa app is **JS + adapters**.
 
@@ -15,7 +17,7 @@ The engawa — the veranda between house and garden — is the contract layer be
 | `spec/` | The product. Normative contract: handshake, wire protocol, command set, resilience guarantees. |
 | `conformance/` | Executable form of the spec. A host is conformant when the suite passes — on the real host and on the Node mock host. |
 | `shell-js/` | Shared JS runtime, identical bytes on every host. Owns promise correlation, invoke, events. |
-| Hosts | One per platform, no shared code. macOS: Swift + WKWebView. Windows: C# + WebView2. Linux: C++ (gtkmm) + WebKitGTK. Each is a small program on its platform's most-paved path. |
+| Hosts | One per platform, no shared code. macOS: Swift + WKWebView. Windows: C++ + WebView2. Linux: C++ (gtkmm) + WebKitGTK. Each is a small native program on its platform's most-paved path. |
 | Adapters | The extension model and the app model. 1 adapter = 1 namespace = 1 repo, consumed as a hash-pinned source dependency, compiled into the host at app build time. |
 
 Hosts implement two primitives — receive a string, evaluate a string — and a set of command handlers. Everything protocol-shaped lives in shell.js. This keeps the surface where three implementations can diverge as small as it can be.
@@ -47,6 +49,8 @@ Update speaks two modes over one manifest — **app-update** (signed asset swap,
 **`update` is mandatory — it is part of what Engawa is.** Self-managed delivery of code is one of the two properties that make Engawa an app engine rather than a shell (above), and its trust and manifest rules (§7.1/§8) are host obligations. So `update` is contract-coupled: it versions with the contract, is never extracted, and is composed into *every* host. It is not an app's choice.
 
 **Every other adapter is per app.** The reference `sqlite` is an ordinary, optional adapter — an app that wants durable SQL declares it (in `engawa.json`, see `cli/`) and it is compiled in; an app that declares nothing gets a host without it. `sqlite` is not part of Engawa the way `update` is; the original drift was baking it into every host as if it were.
+
+**Composition is realized per host, by the CLI, from the same `engawa.json`.** macOS generates a per-app SwiftPM package depending on exactly the declared adapters. Windows generates a per-app CMake project via `hosts/windows/engawa-host.cmake` (`engawa_add_host`): each declared adapter contributes its `hosts/windows/*.cpp` and an optional `deps.cmake` (its native dependencies, e.g. the sqlite adapter fetches the SQLite amalgamation), and a generated compose TU registers each via the `make<Package>Adapter()` factory convention. A local adapter is referenced by path; an external one is fetched by git revision. So on either OS an app is built in its own environment — the Windows toolchain never needs the macOS one — and gets a host holding exactly its declared adapters plus the mandatory `update`.
 
 `adapters/` holding both is expected, not a smell: `update` (mandatory, contract-coupled, never extracted) and `sqlite` (a reference adapter, extractable) are both adapters — only their obligation to the project differs.
 

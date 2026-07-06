@@ -148,7 +148,7 @@ The host injects a Content-Security-Policy on every `app://` response: `default-
 
 What `app://` loads is a constitutional matter; delivery mechanics are an adapter's business, trust is not:
 
-- The host embeds the app publisher's public key (ed25519) at build time. It is the trust root.
+- The trust root is the app publisher's ed25519 public key, bound to the host at build time. A host MUST NOT source it at runtime from a mutable location beside the distributable (a loose file, a writable registry entry) — a swappable trust root could be replaced to authorize a malicious update, defeating the guarantee below. A host not delivered inside an OS-signed container that covers its assets MUST compile the key into its binary; one so delivered MAY instead carry it within that container. (The reference CLI compiles the key into the Windows host at build time; the macOS host carries it in its codesigned bundle.) An environment-variable trust root is permitted for development and conformance only, where no update crosses a real trust boundary.
 - An app-asset payload (app-update) MUST carry a signature over its content hash, verified by the host against the embedded key **before** any file is placed under the `app://` root. Unverified payloads are discarded; there is no override.
 - A base payload (full-update) MUST be verified the same way before the host announces it as installable. OS-level signing (codesign/notarization, Authenticode) applies on top, per platform.
 - Update manifests (§8) are authenticated by the signatures of the payloads they point to; manifest transport (HTTPS, registry, file share) is out of contract.
@@ -200,7 +200,7 @@ Mode semantics:
 ## 9. Platform baseline
 
 - OS floor: macOS 13+, Windows 10 1809+ (WebView2 Evergreen), Ubuntu 22.04+ / webkit2gtk-4.1 equivalents. Raising a floor is a contract minor version.
-- Engine check at boot: below the spec minimum → spec'd error screen showing detected/required versions; no partial boot. `app.engineInfo` exposes engine name/version, host version, contract version.
+- Engine check at boot: below the spec minimum → spec'd error screen showing detected/required versions; no partial boot. `app.engineInfo` exposes engine name/version, host version, contract version. The engine minimum is expressed in the engine's own version scheme, so it is per-engine: the reference hosts use WebKit `605.1.15` (macOS), Chromium `90.0.0.0` (Windows/WebView2), and the webkit2gtk-4.1 equivalent (Linux). Because the scheme differs per engine, the conformance floor test draws its below/above straddle versions from the host driver (`engawa.engineFloorSamples`) rather than a fixed pair.
 - Testability hook (normative): a host MUST honor `ENGAWA_FAKE_ENGINE_VERSION` (env) by substituting it for the detected engine version. This exists solely so the conformance suite can exercise floor rejection on any machine; it is not a production feature and MUST NOT bypass §7.1.
 
 ## 10. Runtime resilience (normative)

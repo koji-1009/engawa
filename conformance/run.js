@@ -9,13 +9,22 @@
 
 const suite = require('./suite');           // array of { name, fn }
 const { createMockHost } = require('./hosts/mock/host');
-const { connectMacosHost } = require('./hosts/macos/driver');
 
-// Each driver returns { engawa } or throws if the host is unavailable.
+// The mock host runs everywhere; the native reference host is the current platform's. On macOS this
+// is byte-for-byte the old behavior (mock + macos required); on Windows it is mock + windows. A
+// platform with no reference host yet (e.g. linux pre-freeze) runs mock only.
+const NATIVE = {
+  darwin: () => require('./hosts/macos/driver').connectMacosHost(),
+  win32: () => require('./hosts/windows/driver').connectWindowsHost(),
+};
+
 const HOSTS = [
   { name: 'mock', required: true, connect: async () => createMockHost() },
-  { name: 'macos', required: true, connect: async () => connectMacosHost() },
 ];
+if (NATIVE[process.platform]) {
+  const name = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : process.platform;
+  HOSTS.push({ name, required: true, connect: async () => NATIVE[process.platform]() });
+}
 
 async function runHost(host) {
   let handle;

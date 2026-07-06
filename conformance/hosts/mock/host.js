@@ -247,7 +247,12 @@ function buildHandlers(ctx) {
       const exe = resolveSidecar(command);
       if (!exe) throw err('EPERM', 'not a declared in-bundle sidecar: ' + command);
       const args = a.args && Array.isArray(a.args) ? a.args.filter((x) => typeof x === 'string') : [];
-      const proc = child_process.spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      // The conformance sidecar is a POSIX shebang node script with no extension — directly
+      // spawnable on POSIX, but not on Windows. Run it through this host's own node there (the same
+      // node running the mock), which keeps ONE sidecar source working on both platforms.
+      const proc = process.platform === 'win32'
+        ? child_process.spawn(process.execPath, [exe, ...args], { stdio: ['pipe', 'pipe', 'pipe'] })
+        : child_process.spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'] });
       const pid = proc.pid;
       const st = { proc, stdout: newStream(), stderr: newStream(), exited: false, exitCode: 0, exitEmitted: false };
       procs.set(pid, st);
@@ -379,7 +384,10 @@ function coalesceResize(frames) {
 
 function reqPath(a) {
   if (!a || typeof a.path !== 'string' || a.path.length === 0) throw err('EINVAL', 'path required');
-  if (a.path[0] !== '/') throw err('EINVAL', 'path must be absolute: ' + a.path);   // spec/commands/fs.md
+  // "Absolute" is OS-shaped (spec/commands/fs.md): path.isAbsolute accepts a POSIX root on macOS and
+  // a drive/UNC root on Windows. A bare `a.path[0] !== '/'` check would reject the mock's own
+  // C:\… paths on Windows (path.appData derives from os.tmpdir()).
+  if (!path.isAbsolute(a.path)) throw err('EINVAL', 'path must be absolute: ' + a.path);
   return a.path;
 }
 

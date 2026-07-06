@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="app-version" content="1">
+<title>Engawa Gallery</title>
+<link rel="stylesheet" href="gallery.css">
+<h1>Engawa Gallery</h1>
+<p id="platform" class="sub">loading…</p>
+<p class="sub">A manual feature check: click a button, watch the log. The dialog/notification/shellOpen
+buttons trigger real native UI (a file picker, a toast, your browser) — the parts the conformance
+suite can only stub.</p>
+
+<section>
+  <h2>dialog <span class="native">native UI</span></h2>
+  <button id="dlg-open">open file</button>
+  <button id="dlg-open-multi">open (multiple)</button>
+  <button id="dlg-open-dir">open folder</button>
+  <button id="dlg-save">save as…</button>
+  <button id="dlg-msg">message box</button>
+  <button id="dlg-msg-buttons">message (3 buttons)</button>
+</section>
+
+<section>
+  <h2>notification <span class="native">native UI</span></h2>
+  <button id="notify">show toast</button>
+</section>
+
+<section>
+  <h2>clipboard</h2>
+  <input id="clip-text" value="engawa clipboard ✓" autocomplete="off">
+  <button id="clip-write">writeText</button>
+  <button id="clip-read">readText</button>
+</section>
+
+<section>
+  <h2>fs + sqlite</h2>
+  <button id="fs-write">fs.write (appData/gallery.txt)</button>
+  <button id="fs-read">fs.read</button>
+  <button id="sql-run">sqlite: insert + query last 5</button>
+</section>
+
+<section>
+  <h2>window</h2>
+  <button id="win-title">setTitle</button>
+  <button id="win-size">setSize 900×640</button>
+  <button id="win-min">minimize</button>
+  <button id="win-max">maximize</button>
+</section>
+
+<section>
+  <h2>shellOpen <span class="native">opens browser</span></h2>
+  <input id="url" value="https://example.com" autocomplete="off">
+  <button id="open-url">openExternal</button>
+</section>
+
+<section>
+  <h2>info</h2>
+  <button id="paths">path.appData / home / temp</button>
+  <button id="app-info">app.version / engineInfo / update.status</button>
+</section>
+
+<h2>log</h2>
+<div id="log"></div>
+
+<script src="gallery.js"></script>
