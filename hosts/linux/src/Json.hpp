@@ -4,6 +4,8 @@
 // readers centralize that mapping instead of scattering null checks through every handler
 // (one place for the untyped-arg -> registry-code mapping).
 #include <nlohmann/json.hpp>
+#include <climits>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -76,6 +78,11 @@ inline bool tryGetDouble(const Json& a, const std::string& key, double& out) {
 inline int reqInt(const Json& a, const std::string& key) {
     double d;
     if (!tryGetDouble(a, key, d)) throw EngawaError::invalid(key + " required");
+    // static_cast<int> of a double outside int's range (or NaN) is UB; clamp first so an
+    // out-of-range wire value (e.g. 1e300) degrades to a sane, in-range int instead.
+    if (std::isnan(d)) return 0;
+    if (d > static_cast<double>(INT_MAX)) return INT_MAX;
+    if (d < static_cast<double>(INT_MIN)) return INT_MIN;
     return static_cast<int>(d);
 }
 
