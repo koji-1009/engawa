@@ -18,6 +18,11 @@ const HOST_BIN = path.join(REPO, 'hosts', 'macos', '.build', 'debug', 'EngawaHos
 const SHELL_JS = path.join(REPO, 'shell-js', 'shell.js');
 const BUNDLE_ROOT = path.join(REPO, 'conformance', 'fixtures', 'bundle');
 
+// The WebKit engine floor is 605.1.15 (spec/contract.md §9, EngawaHost.engineFloor). Straddle it:
+// 600.0 is below, 99999 above. The suite draws these from the driver (engine.test.js) because the
+// floor's version scheme is per-engine — a fixed pair would misjudge the Chromium/WebKitGTK hosts.
+const ENGINE_FLOOR_SAMPLES = { below: '600.0', above: '99999' };
+
 // §9: spawn a throwaway host with a faked engine version and observe whether it rejects the
 // engine floor (no boot) or reaches ready. Independent of the connected host.
 function checkEngineFloor(fakeVersion) {
@@ -51,6 +56,43 @@ function checkEngineFloor(fakeVersion) {
     });
     // A hang (no floorRejected, no ready) is a FAILURE, not a pass — booted stays false so the
     // above-floor assertion (booted === true) can tell a real boot from a host that never started.
+    setTimeout(() => finish({ rejected: false, booted: false, timeout: true }), 8000);
+  });
+}
+
+// §9: spawn a host with engine detection FORCED to fail and observe that it fails closed —
+// rejects the floor (no boot) and reports a detected version — rather than assuming a version
+// above the floor. Exercises the detection-failure fallback, which ENGAWA_FAKE_ENGINE_VERSION
+// (a successful substitution) cannot reach.
+function checkEngineUndetected() {
+  return new Promise((resolve) => {
+    const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-undet-'));
+    fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
+    const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-undetdata-'));
+    const c = spawn(HOST_BIN, [], {
+      env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
+             ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_FORCE_ENGINE_UNDETECTED: '1' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let done = false, b = '';
+    const finish = (r) => {
+      if (done) return; done = true;
+      try { c.kill('SIGKILL'); } catch { /* ignore */ }
+      try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
+      resolve(r);
+    };
+    c.stdout.on('data', (d) => {
+      b += d.toString('utf8');
+      let i;
+      while ((i = b.indexOf('\n')) >= 0) {
+        const line = b.slice(0, i); b = b.slice(i + 1);
+        if (!line.trim()) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.ctl === 'floorRejected') finish({ rejected: true, detected: m.detected, required: m.required });
+        else if (m.ctl === 'ready') finish({ rejected: false, booted: true });
+      }
+    });
     setTimeout(() => finish({ rejected: false, booted: false, timeout: true }), 8000);
   });
 }
@@ -243,6 +285,9 @@ function connectMacosHost() {
     // Data crosses the control channel base64-encoded (never the message channel).
     ioPut: (url, buf) => request({ ctl: 'ioPut', url, dataB64: Buffer.from(buf).toString('base64') }),
     ioGet: (url) => request({ ctl: 'ioGet', url }).then((v) => Buffer.from(v.base64, 'base64')),
+    // §5a — the CORS headers the host actually emitted on the last app://io response. In-page JS
+    // can't read Access-Control-Allow-Origin off a cross-origin fetch, so the host reports it.
+    ioCorsHeaders: () => request({ ctl: 'ioCorsHeaders' }),
     // §6 injection matrix — reports whether the app:// iframe received __shell.
     frameCheck: () => request({ ctl: 'frameCheck' }),
     // §10 — run the renderer-crash recovery accounting + emit app.renderCrashed.
@@ -251,6 +296,8 @@ function connectMacosHost() {
     checkNonAppInjection: () => checkNonAppInjection(),
     // §9 engine floor — spawns a throwaway host with a faked engine version.
     checkEngineFloor: (v) => checkEngineFloor(v),
+    // §9 fail-closed — spawns a host with engine detection forced to fail.
+    checkEngineUndetected: () => checkEngineUndetected(),
     // §10 boot-after-storage-wipe — spawns a host that wipes WebView storage at boot.
     checkStorageWipe: () => checkStorageWipe(),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
@@ -277,12 +324,19 @@ function connectMacosHost() {
   return ready
     .then(() => request({ ctl: 'introspect' }))
     .then((surface) => {
+      // The app version declared in the bundle manifest (engawa.json) the host was pointed at —
+      // what app.version must report (spec/commands/app.md), distinct from ENGAWA_APP_VERSION
+      // (unset here) and the host binary's Info.plist. Lets the suite assert manifest precedence.
+      let manifestVersion;
+      try { manifestVersion = JSON.parse(fs.readFileSync(path.join(BUNDLE_ROOT, 'engawa.json'), 'utf8')).version; } catch { /* none */ }
       const engawa = Object.assign({
         platform: surface.platform,
         contractVersion: surface.contractVersion,
         capabilities: surface.capabilities,
         inlineScriptBlocked: surface.inlineScriptBlocked,
         externalScriptRan: surface.externalScriptRan,
+        manifestVersion,
+        engineFloorSamples: ENGINE_FLOOR_SAMPLES,
       }, behavior);
       return {
         name: 'macos',

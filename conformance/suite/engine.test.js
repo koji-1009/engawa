@@ -22,4 +22,14 @@
     var high = await engawa.checkEngineFloor(samples.above);  // above the floor
     assert(high.rejected === false && high.booted === true, 'an above-floor engine boots normally (reaches ready, not a timeout)');
   });
+
+  test('§9 engine detection failure fails closed (rejected, not assumed above the floor)', async function (engawa) {
+    if (!engawa.checkEngineUndetected) return;   // requires a real host + the detection-failure hook
+
+    // When the host cannot read the engine version at all, it MUST route to the same rejection
+    // (no partial boot) as a below-floor engine — never substitute a value that passes the floor.
+    var r = await engawa.checkEngineUndetected();
+    assert(r.rejected === true, 'undetectable engine is rejected, not booted as if above the floor');
+    assert(typeof r.detected === 'string' && r.detected.length > 0, 'the rejection reports a detected version (e.g. "unknown")');
+  });
 })();

@@ -55,7 +55,7 @@ struct WindowAdapter: Adapter {
                 throw AdapterError("EINVAL", "token required")
             }
             let allow = obj["allow"]?.boolValue ?? false
-            try await controller.respondToClose(token: Int(token), allow: allow)
+            try await controller.respondToClose(token: clampedInt(token), allow: allow)
             return .null
 
         case "requestClose" where conformance:
@@ -66,7 +66,7 @@ struct WindowAdapter: Adapter {
             return await controller.lastCloseAllowed.map { JSONValue.bool($0) } ?? .null
 
         case "__resizeStorm" where conformance:   // fire many resizes in one tick (§2.1 coalescing)
-            let count = Int(obj["count"]?.numberValue ?? 8)
+            let count = clampedInt(obj["count"]?.numberValue ?? 8)
             let from = obj["from"]?.numberValue ?? 300
             await controller.resizeStorm(from: from, count: count)
             return .object(["from": .number(from), "count": .number(Double(count)), "last": .number(from + Double(count - 1))])

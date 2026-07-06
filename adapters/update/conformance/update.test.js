@@ -139,6 +139,33 @@ test('update: a verified-but-broken payload rolls back after 2 unconfirmed launc
   fs.rmSync(payload, { force: true });
 });
 
+test('update: staging a fresh payload resets the rollback budget (§8)', async function (engawa) {
+  if (!has(engawa)) return;
+  var start = (await engawa.invoke('update.status')).currentSlot;
+
+  // Stage payload A and consume ONE of its two launch attempts (one unconfirmed boot).
+  var pa = writePayload('<title>A</title>');
+  var sa = engawa.signFile(pa);
+  await engawa.invoke('update.stageAppUpdate', { payloadPath: pa, hash: sa.hash, signature: sa.signature, version: '1.1.0' });
+  await engawa.invoke('update.__relaunch');   // A: attempt 1 consumed (health.attempts = 1)
+
+  // Stage payload B on top of A's partially-spent budget. B MUST get a full, fresh 2 attempts —
+  // it must not inherit A's already-consumed attempt (that would be a diminished budget).
+  var pb = writePayload('<title>B</title>');
+  var sb = engawa.signFile(pb);
+  await engawa.invoke('update.stageAppUpdate', { payloadPath: pb, hash: sb.hash, signature: sb.signature, version: '1.2.0' });
+
+  // Two unconfirmed launches must NOT yet roll B back — it still has its full 2 fresh attempts.
+  // Without the budget reset, B would inherit attempts=1 and roll back on the 2nd launch here.
+  assertEqual((await engawa.invoke('update.__relaunch')).hasPending, true, 'B still pending after fresh attempt 1');
+  assertEqual((await engawa.invoke('update.__relaunch')).hasPending, true, 'B still pending after fresh attempt 2');
+  // The third unconfirmed launch exhausts B's fresh budget and rolls back.
+  var r3 = await engawa.invoke('update.__relaunch');
+  assertEqual(r3.hasPending, false, 'B rolled back only after its full 2 fresh attempts');
+  assertEqual((await engawa.invoke('update.status')).currentSlot, start, 'rolled back to the original slot');
+  fs.rmSync(pa, { force: true }); fs.rmSync(pb, { force: true });
+});
+
 test('update.evaluate applies the §8 compatibility rule (app-update vs full-update)', async function (engawa) {
   if (!has(engawa)) return;
   var appOnly = await engawa.invoke('update.evaluate', {

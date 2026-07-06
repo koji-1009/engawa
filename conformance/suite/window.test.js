@@ -23,6 +23,17 @@
     assertEqual(size.height, 480, 'height');
   });
 
+  test('window.getSize reports the logical size set, exactly and stably (not live OS bounds)', async function (engawa) {
+    // A distinctive, non-round size that a re-measured live frame could perturb (DPI/backing scale)
+    // but the logical model returns verbatim. Reading twice must be identical (idempotent).
+    await engawa.invoke('window.setSize', { width: 613, height: 447 });
+    var a = await engawa.invoke('window.getSize');
+    assertEqual(a, { width: 613, height: 447 }, 'getSize returns exactly the logical size set');
+    var b = await engawa.invoke('window.getSize');
+    assertEqual(b, { width: 613, height: 447 }, 'getSize is stable across reads (not re-measured)');
+    await engawa.invoke('window.setSize', { width: 640, height: 480 });   // restore for later tests
+  });
+
   test('window.setSize with bad args rejects EINVAL', async function (engawa) {
     var err = null;
     try { await engawa.invoke('window.setSize', { width: 640 }); } catch (e) { err = e; }

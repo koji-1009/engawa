@@ -11,6 +11,13 @@
     assert(typeof v === 'string' && v.length > 0, 'version string, got ' + JSON.stringify(v));
   });
 
+  test('app.version comes from the app manifest (engawa.json), not a build/default fallback', async function (engawa) {
+    if (!engawa.manifestVersion) return;   // requires a real host serving a bundle manifest
+    // ENGAWA_APP_VERSION is unset, so a correct host reports the manifest's version — not the
+    // host binary's Info.plist and not the "0.0.0" last-resort default (spec/commands/app.md).
+    assertEqual(await engawa.invoke('app.version'), engawa.manifestVersion, 'app.version is the manifest version');
+  });
+
   test('app.engineInfo reports engine/host/contract', async function (engawa) {
     var info = await engawa.invoke('app.engineInfo');
     assert(info && typeof info === 'object', 'object');

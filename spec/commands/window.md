@@ -14,6 +14,8 @@
 
 Events: `window.focus`, `window.blur`, `window.resize` (payload `{ width, height }`, coalesced per §2.1), `window.closeRequested` (payload `{ token }`).
 
+`getSize` reports the logical CSS-pixel size the app last set via `setSize` (or the size of the most recent user resize), NOT a re-measurement of the live OS frame. So `setSize(w, h)` immediately followed by `getSize` MUST return exactly `{ w, h }` — the round-trip is exact regardless of DPI/backing scale factor or any frame adjustment the window system applies. `window.resize` carries that same logical size.
+
 ## Close protocol (contract §4.2)
 
 Interception is **opt-in**. By default a user close attempt closes the window — an app that

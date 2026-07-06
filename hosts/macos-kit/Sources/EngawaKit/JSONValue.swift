@@ -56,8 +56,22 @@ public indirect enum JSONValue: Sendable {
 
     // Convenience accessors for adapter code.
     public var objectValue: [String: JSONValue]? { if case .object(let o) = self { return o }; return nil }
+    // Numeric accessors narrowed to Int without trapping (see `clampedInt`).
+    public var intValue: Int? { if case .number(let d) = self { return clampedInt(d) }; return nil }
     public var stringValue: String? { if case .string(let s) = self { return s }; return nil }
     public var numberValue: Double? { if case .number(let d) = self { return d }; return nil }
     public var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
     public var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
+}
+
+/// Narrow an IEEE double (as carried on the JSON wire) to `Int` without trapping.
+/// `Int(Double)` in Swift is a *trapping* conversion: a value outside `Int`'s representable
+/// range — or NaN — crashes the process unrecoverably. A hostile or malformed wire value
+/// (e.g. `1e300` as a `pid`) must degrade to a sane in-range `Int`, never kill the host.
+/// Matches the C++ hosts' `ja::reqInt` clamp semantics (NaN→0, saturate to min/max).
+public func clampedInt(_ d: Double) -> Int {
+    if d.isNaN { return 0 }
+    if d >= Double(Int.max) { return Int.max }
+    if d <= Double(Int.min) { return Int.min }
+    return Int(d)
 }
