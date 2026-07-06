@@ -54,8 +54,10 @@ host-windows:
 host-windows-smoke:
 	powershell -NoProfile -ExecutionPolicy Bypass -File hosts/windows/test/smoke.ps1
 
+# Build the Linux reference host (C++ + GTK3 + WebKitGTK). Needs g++, cmake, ninja and the -dev
+# packages for gtk+-3.0, webkit2gtk-4.1, libsoup-3.0, libsodium.
 host-linux:
-	@echo "linux host: empty until contract freeze (hosts/linux/README.md)" && false
+	bash hosts/linux/build.sh
 
 # Gate 2 — acceptance gate. Build host + sqlite/update adapters, bundle examples/notes,
 # scripted write/read/quit/relaunch/read-back/signed-update/relaunch (CLAUDE.md).

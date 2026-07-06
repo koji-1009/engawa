@@ -16,6 +16,7 @@ const { createMockHost } = require('./hosts/mock/host');
 const NATIVE = {
   darwin: () => require('./hosts/macos/driver').connectMacosHost(),
   win32: () => require('./hosts/windows/driver').connectWindowsHost(),
+  linux: () => require('./hosts/linux/driver').connectLinuxHost(),
 };
 
 const HOSTS = [
