@@ -52,7 +52,11 @@ host-windows:
 # the dialog/notification paths the conformance suite covers only via substitutes. Fires a visible
 # toast, so it is a developer/interactive-session check, not part of `make conformance`.
 host-windows-smoke:
+ifeq ($(UNAME),Windows)
 	powershell -NoProfile -ExecutionPolicy Bypass -File hosts/windows/test/smoke.ps1
+else
+	@echo "host-windows-smoke: Windows-only target"; exit 1
+endif
 
 # Build the Linux reference host (C++ + GTK3 + WebKitGTK). Needs g++, cmake, ninja and the -dev
 # packages for gtk+-3.0, webkit2gtk-4.1, libsoup-3.0, libsodium.

@@ -1,71 +1,119 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "../args.ts";
 import { CliError, log } from "../log.ts";
+import { findEngawaHome } from "../paths.ts";
 
-const INDEX_HTML = `<!doctype html>
-<meta charset="utf-8">
-<meta name="app-version" content="1">
-<title>Engawa App</title>
-<h1>Engawa App</h1>
-<ul id="notes"></ul>
-<form id="add"><input id="body" placeholder="a note" autocomplete="off"><button>add</button></form>
-<script src="main.js"></script>
-`;
+// Templates ship beside the CLI source (package.json "files" includes "templates"): the layout is
+// cli/src/commands/new.ts → cli/templates/<name>/. Resolve relative to this module so it works both
+// from a checkout and an installed package.
+const TEMPLATES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "templates");
 
-// A minimal notes app backed by the built-in fs namespace — durable data (contract §10), no
-// adapters needed, so it builds and runs out of the box. To use sqlite instead, declare the
-// adapter in engawa.json's "adapters" (see examples/notes). External script only (inline script
-// is dead under the default CSP, §7.3).
-const MAIN_JS = `'use strict';
-(function () {
-  var engawa = window.engawa;
-  var file;
-  async function load() {
-    if (!file) file = (await engawa.invoke('path.appData')) + '/notes.json';
-    try { return JSON.parse(await engawa.invoke('fs.readTextFile', { path: file })); }
-    catch (e) { return []; }
+const DEFAULT_TEMPLATE = "minimal";
+
+// Files copied verbatim except these placeholders, substituted in every text file. {{name}} and
+// {{id}} come from the app name; {{sqliteAdapterPath}} is the absolute dev-time path to the repo's
+// adapters/sqlite (resolved via findEngawaHome), only present in the sqlite template.
+interface Substitutions {
+  name: string;
+  id: string;
+  sqliteAdapterPath: string;
+}
+
+function applySubstitutions(text: string, subs: Substitutions): string {
+  return text
+    .replaceAll("{{name}}", subs.name)
+    .replaceAll("{{id}}", subs.id)
+    .replaceAll("{{sqliteAdapterPath}}", subs.sqliteAdapterPath);
+}
+
+function listTemplates(): string[] {
+  if (!existsSync(TEMPLATES_DIR)) throw new CliError(`templates directory not found at ${TEMPLATES_DIR}`);
+  return readdirSync(TEMPLATES_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+}
+
+// One-line template description = the README.md first heading line, minus the leading "# " and
+// the "{{name}} — " project-name prefix the templates use (so `--list` reads cleanly).
+function templateDescription(template: string): string {
+  try {
+    const readme = readFileSync(join(TEMPLATES_DIR, template, "README.md"), "utf8");
+    const first = readme.split("\n").find((l) => l.startsWith("# "));
+    if (first) return first.slice(2).replace(/^\{\{name\}\}\s*[—-]\s*/, "").trim();
+  } catch {
+    /* fall through */
   }
-  async function save(notes) { await engawa.invoke('fs.writeTextFile', { path: file, contents: JSON.stringify(notes) }); }
-  async function render() {
-    var notes = await load();
-    var ul = document.getElementById('notes');
-    ul.textContent = '';
-    notes.forEach(function (n) { var li = document.createElement('li'); li.textContent = n; ul.appendChild(li); });
+  return "(no description)";
+}
+
+// Recursively copy a template tree into `dest`, substituting placeholders in every file.
+function copyTree(srcDir: string, destDir: string, subs: Substitutions): void {
+  mkdirSync(destDir, { recursive: true });
+  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+    const src = join(srcDir, entry.name);
+    const dest = join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copyTree(src, dest, subs);
+    } else {
+      writeFileSync(dest, applySubstitutions(readFileSync(src, "utf8"), subs));
+    }
   }
-  document.getElementById('add').addEventListener('submit', async function (ev) {
-    ev.preventDefault();
-    var body = document.getElementById('body').value.trim();
-    if (!body) return;
-    var notes = await load();
-    notes.push(body);
-    await save(notes);
-    document.getElementById('body').value = '';
-    render();
-  });
-  render();
-})();
-`;
+}
+
+// The sqlite template needs an absolute, JSON-safe path to the repo's adapters/sqlite. Only
+// resolve it (which requires an Engawa home) when the chosen template actually references it. The
+// placeholder sits inside a JSON string literal, and on Windows the path has backslashes, so emit
+// it JSON-escaped (JSON.stringify then strip the surrounding quotes).
+function sqliteAdapterPath(templateDir: string): string {
+  const needsIt = readFileSync(join(templateDir, "engawa.json"), "utf8").includes("{{sqliteAdapterPath}}");
+  if (!needsIt) return "";
+  const abs = join(findEngawaHome(), "adapters", "sqlite");
+  return JSON.stringify(abs).slice(1, -1);
+}
 
 export function cmdNew(argv: string[]): void {
-  const { positionals } = parseArgs(argv);
+  const { positionals, flags, bools } = parseArgs(argv);
+
+  if (bools.has("list")) {
+    const templates = listTemplates();
+    log.info("Available templates:");
+    const width = Math.max(...templates.map((t) => t.length));
+    for (const t of templates) {
+      const marker = t === DEFAULT_TEMPLATE ? " (default)" : "";
+      log.info(`  ${t.padEnd(width)}  ${templateDescription(t)}${marker}`);
+    }
+    return;
+  }
+
   const name = positionals[0];
-  if (name === undefined) throw new CliError("usage: engawa new <name>");
+  if (name === undefined) throw new CliError("usage: engawa new <name> [--template <t>]  (see `engawa new --list`)");
+
+  const template = flags["template"] ?? DEFAULT_TEMPLATE;
+  const templateDir = join(TEMPLATES_DIR, template);
+  if (!existsSync(templateDir)) {
+    throw new CliError(`unknown template "${template}" — available: ${listTemplates().join(", ")}`);
+  }
 
   const dir = resolve(name);
   if (existsSync(dir)) throw new CliError(`${dir} already exists`);
 
   const slug = basename(name).replace(/[^a-z0-9]+/gi, "").toLowerCase() || "app";
-  const manifest = { id: `dev.engawa.${slug}`, name: basename(name), version: "1.0.0", adapters: [] as unknown[], sidecars: [] as string[] };
+  const subs: Substitutions = {
+    name: basename(name),
+    id: `dev.engawa.${slug}`,
+    sqliteAdapterPath: sqliteAdapterPath(templateDir),
+  };
 
-  mkdirSync(join(dir, "app"), { recursive: true });
-  writeFileSync(join(dir, "engawa.json"), JSON.stringify(manifest, null, 2) + "\n");
-  writeFileSync(join(dir, "app", "index.html"), INDEX_HTML);
-  writeFileSync(join(dir, "app", "main.js"), MAIN_JS);
+  copyTree(templateDir, dir, subs);
   writeFileSync(join(dir, ".gitignore"), "build/\n*.app\nengawa-signing.key\ntrust-root.txt\n");
 
-  log.ok(`created ${name}/`);
+  log.ok(`created ${name}/ from the ${template} template`);
   log.info(`  cd ${name}`);
   log.info(`  engawa dev        # build + run`);
-  log.info(`  engawa build      # bundle a .app`);
+  // Platform-aware: build produces a runnable folder on Windows/Linux, a .app bundle on macOS.
+  const built = process.platform === "darwin" ? "a runnable .app bundle" : "a runnable app folder";
+  log.info(`  engawa build      # bundle ${built}`);
 }

@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="app-version" content="1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{name}}</title>
+<link rel="stylesheet" href="style.css">
+<main>
+  <h1>{{name}}</h1>
+  <p>A minimal app wired to the self-managed update namespace (§7.1 / §8).</p>
+  <section id="update-panel">
+    <h2>Update status</h2>
+    <dl>
+      <dt>current slot</dt><dd id="currentSlot">…</dd>
+      <dt>version</dt><dd id="version">…</dd>
+      <dt>pending update</dt><dd id="hasPending">…</dd>
+    </dl>
+    <p id="error" class="error" hidden></p>
+  </section>
+</main>
+<script src="main.js"></script>

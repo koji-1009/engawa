@@ -15,10 +15,11 @@ const HELP = `engawa — build and run Engawa apps
 Usage: engawa <command> [options]
 
 Commands:
-  new <name>                     Scaffold a new app (engawa.json + app/)
+  new <name> [--template <t>]    Scaffold a new app (engawa.json + app/)
+  new --list                     List available project templates
   dev                            Build (debug) and launch the app
   build [--out <dir>] [--sign <id>]
-                                 Bundle a codesigned .app (ad-hoc by default)
+                                 Bundle a runnable, codesigned app (ad-hoc by default)
   keygen [--out <dir>]           Generate a dev ed25519 signing keypair (§7.1)
   sign <payload> --key <key> [--version <v>]
                                  Sign an app-update payload → {hash, signature}

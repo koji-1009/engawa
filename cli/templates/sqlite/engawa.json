@@ -1,0 +1,14 @@
+{
+  "id": "{{id}}",
+  "version": "1.0.0",
+  "name": "{{name}}",
+  "adapters": [
+    {
+      "package": "sqlite",
+      "product": "EngawaSQLite",
+      "register": "SqliteAdapter()",
+      "path": "{{sqliteAdapterPath}}"
+    }
+  ],
+  "sidecars": []
+}
