@@ -148,11 +148,11 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
     private func read(_ args: JSONValue) throws -> JSONValue {
         let obj = args.objectValue ?? [:]
         guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
-        let pid = Int(pidD)
+        let pid = clampedInt(pidD)
         let which = obj["stream"]?.stringValue ?? "stdout"
         guard which == "stdout" || which == "stderr" else { throw AdapterError("EINVAL", "bad stream: \(which)") }
         if let mb = obj["maxBytes"]?.numberValue, mb < 0 { throw AdapterError("EINVAL", "bad maxBytes") }
-        let maxBytes = Int(obj["maxBytes"]?.numberValue ?? 65536)
+        let maxBytes = clampedInt(obj["maxBytes"]?.numberValue ?? 65536)
 
         lock.lock()
         guard let proc = procs[pid] else { lock.unlock(); throw AdapterError("ESRCH", "no such process: \(pid)") }
@@ -185,10 +185,11 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
         let obj = args.objectValue ?? [:]
         guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
         guard let data = obj["data"]?.stringValue else { throw AdapterError("EINVAL", "data required") }
+        let pid = clampedInt(pidD)
         lock.lock()
-        let proc = procs[Int(pidD)]
+        let proc = procs[pid]
         lock.unlock()
-        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(pid)") }
         if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
         do { try proc.stdin.write(contentsOf: Data(data.utf8)) }
         catch { throw AdapterError("EIO", "stdin write failed: \(error.localizedDescription)") }
@@ -197,7 +198,7 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
 
     private func wasPaused(_ args: JSONValue) throws -> JSONValue {
         let obj = args.objectValue ?? [:]
-        let pid = Int(obj["pid"]?.numberValue ?? -1)
+        let pid = clampedInt(obj["pid"]?.numberValue ?? -1)
         let which = obj["stream"]?.stringValue ?? "stdout"
         lock.lock(); defer { lock.unlock() }
         guard let proc = procs[pid] else { throw AdapterError("ESRCH", "no such process: \(pid)") }
@@ -208,10 +209,11 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
     private func stdinClose(_ args: JSONValue) throws -> JSONValue {
         let obj = args.objectValue ?? [:]
         guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
+        let pid = clampedInt(pidD)
         lock.lock()
-        let proc = procs[Int(pidD)]
+        let proc = procs[pid]
         lock.unlock()
-        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(pid)") }
         if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
         try? proc.stdin.close()
         return .null
@@ -220,10 +222,11 @@ final class ProcessAdapter: Adapter, @unchecked Sendable {
     private func kill(_ args: JSONValue) throws -> JSONValue {
         let obj = args.objectValue ?? [:]
         guard let pidD = obj["pid"]?.numberValue else { throw AdapterError("EINVAL", "pid required") }
+        let pid = clampedInt(pidD)
         lock.lock()
-        let proc = procs[Int(pidD)]
+        let proc = procs[pid]
         lock.unlock()
-        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(Int(pidD))") }
+        guard let proc = proc else { throw AdapterError("ESRCH", "no such process: \(pid)") }
         if proc.exitEmitted { return .null }   // already exited: no-op (spec/commands/process.md)
         proc.process.terminate()
         return .null

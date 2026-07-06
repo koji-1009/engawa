@@ -129,6 +129,10 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
         try? FileManager.default.removeItem(at: targetDir)
         try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
         try extractTar(URL(fileURLWithPath: payloadPath), into: targetDir)
+        // A freshly staged payload gets a fresh rollback budget (§8: 2 launch attempts). Any
+        // health left by a prior pending (e.g. a payload that failed to boot once) must not be
+        // inherited, or the new payload would start with fewer than its full 2 attempts.
+        try? FileManager.default.removeItem(at: healthFile)
         writeAtomic(pendingVersionFile, version)
 
         // The single atomic commit point: reserve adoption.

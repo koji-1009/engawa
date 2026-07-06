@@ -44,6 +44,21 @@
     await engawa.invoke('fs.remove', { path: file });
   });
 
+  test('§5a app://io responses carry the app-origin CORS headers, not a wildcard', async function (engawa) {
+    if (!engawa.ioPut || !engawa.ioCorsHeaders) return;   // requires a real host + header introspection
+    var base = await engawa.invoke('path.temp');
+    var file = base + '/engawa-io-cors-' + Date.now() + '.bin';
+    var w = await engawa.invoke('fs.openWrite', { path: file });
+    await engawa.ioPut(w.url, Buffer.from('cors'));
+    var r = await engawa.invoke('fs.openRead', { path: file });
+    await engawa.ioGet(r.url);   // triggers a real app://io GET response carrying the CORS headers
+    var cors = await engawa.ioCorsHeaders();
+    // assets.md: ACAO covers the app origin specifically (app://app), never "*"; methods are GET, PUT.
+    assertEqual(cors.origin, 'app://app', 'Access-Control-Allow-Origin opts in the app origin, not a wildcard');
+    assertEqual(cors.methods, 'GET, PUT', 'Access-Control-Allow-Methods is exactly GET, PUT');
+    await engawa.invoke('fs.remove', { path: file });
+  });
+
   test('fs.openRead on a missing file rejects ENOENT', async function (engawa) {
     if (!engawa.ioPut) return;
     var base = await engawa.invoke('path.temp');

@@ -10,6 +10,7 @@ require('./engine.test');
 require('./storage.test');
 require('./crash.test');
 require('./limits.test');
+require('./numeric.test');
 require('./path.test');
 require('./fs.test');
 require('./binaryio.test');

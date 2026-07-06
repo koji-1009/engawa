@@ -19,6 +19,13 @@ final class WindowController: NSObject, NSWindowDelegate {
     private var interceptClose = false   // §4.2: false → close on the button; true → defer to the app
     private(set) var lastCloseAllowed: Bool? = nil   // last respondToClose decision (conformance)
 
+    // The logical window size (CSS pixels) the app last set, the source of truth for getSize. It is
+    // NOT re-read from AppKit's live frame per call: DPI scaling and OS frame adjustments can perturb
+    // the actual frame, so reading it would make setSize→getSize round-trip inexactly (contract §4.2
+    // testability). setSize writes it; a real user resize adopts the new frame into it.
+    private var logicalSize = NSSize(width: 1024, height: 720)
+    private var applyingProgrammaticSize = false   // suppress adopting our own setSize's resize notification
+
     init(emitter: EventEmitter, conformance: Bool = false) {
         self.emitter = emitter
         self.conformance = conformance
@@ -27,6 +34,11 @@ final class WindowController: NSObject, NSWindowDelegate {
     func attach(_ window: NSWindow) {
         self.window = window
         window.delegate = self
+        if let s = window.contentView?.bounds.size { logicalSize = s }   // seed from the real initial size
+    }
+
+    private func sizePayload() -> JSONValue {
+        .object(["width": .number(Double(logicalSize.width)), "height": .number(Double(logicalSize.height))])
     }
 
     // MARK: NSWindowDelegate
@@ -46,8 +58,11 @@ final class WindowController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResize(_ notification: Notification) {
-        let s = window?.contentView?.bounds.size ?? .zero
-        emitter.emit("window.resize", .object(["width": .number(Double(s.width)), "height": .number(Double(s.height))]))
+        // A real (user/OS) resize is authoritative — adopt it into the logical model. A resize
+        // caused by our own setSize is not: the model already holds the requested logical size, and
+        // adopting the possibly-adjusted frame would defeat the exact setSize→getSize round-trip.
+        if !applyingProgrammaticSize, let s = window?.contentView?.bounds.size { logicalSize = s }
+        emitter.emit("window.resize", sizePayload())
     }
 
     // Conformance hook: fire many resizes in one tick so the suite can observe §2.1 coalescing.
@@ -78,13 +93,16 @@ final class WindowController: NSObject, NSWindowDelegate {
 
     func setTitle(_ title: String) { window?.title = title }
 
-    func size() -> JSONValue {
-        let s = window?.contentView?.bounds.size ?? .zero
-        return .object(["width": .number(Double(s.width)), "height": .number(Double(s.height))])
-    }
+    func size() -> JSONValue { sizePayload() }
 
     func setSize(width: Double, height: Double) {
-        window?.setContentSize(NSSize(width: width, height: height))
+        // The logical size the app sets is authoritative for getSize, independent of what AppKit
+        // does to the actual frame (§4.2). Store it, then request the frame; the resize notification
+        // our own setContentSize triggers must not overwrite the model (see windowDidResize).
+        logicalSize = NSSize(width: width, height: height)
+        applyingProgrammaticSize = true
+        window?.setContentSize(logicalSize)
+        applyingProgrammaticSize = false
     }
 
     func setResizable(_ resizable: Bool) {

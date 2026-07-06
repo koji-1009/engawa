@@ -13,6 +13,15 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
     private let rootProvider: @Sendable () -> URL?
     private let ioTokens: IoTokenStore
 
+    // Conformance-only: the CORS headers most recently emitted on an app://io response. The real
+    // values can't be read back from in-page JS (Access-Control-Allow-Origin is a non-safelisted
+    // CORS response header, invisible to a cross-origin fetch), so the suite reads what the host
+    // actually put on the wire through here. Guarded by a lock: WKURLSchemeHandler callbacks and
+    // the control-channel read may touch it from different threads.
+    private let corsLock = NSLock()
+    private var lastIoCors: [String: String] = [:]
+    func lastIoCorsHeaders() -> [String: String] { corsLock.lock(); defer { corsLock.unlock() }; return lastIoCors }
+
     init(rootProvider: @escaping @Sendable () -> URL?, ioTokens: IoTokenStore) {
         self.rootProvider = rootProvider
         self.ioTokens = ioTokens
@@ -129,9 +138,14 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
         var headers = ["Content-Type": mime, "Content-Length": "\(data.count)"]
         if csp { headers["Content-Security-Policy"] = defaultCSP }
         if cors {
-            headers["Access-Control-Allow-Origin"] = "*"
-            headers["Access-Control-Allow-Methods"] = "GET, PUT, OPTIONS"
+            // §5a / assets.md: app://io is a distinct origin from the app origin, so its responses
+            // opt the app origin IN specifically — not a wildcard, which would expose io results to
+            // any origin they reach. The authority is the reference host's fixed `app`.
+            let origin = "app://app", methods = "GET, PUT"
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Methods"] = methods
             headers["Access-Control-Allow-Headers"] = "*"
+            corsLock.lock(); lastIoCors = ["origin": origin, "methods": methods]; corsLock.unlock()
         }
         let response = HTTPURLResponse(url: task.request.url!, statusCode: status,
                                        httpVersion: "HTTP/1.1", headerFields: headers)!

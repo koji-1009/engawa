@@ -12,6 +12,7 @@ Events:
 
 Normative:
 
+- `app.version` is the app's declared identity — the version in its manifest (`engawa.json`), the same version the update flow (§8) reasons about. When the app declares a manifest version, `app.version` MUST report it; a host build's own version (e.g. an `Info.plist` field) is only a fallback for when the manifest declares none. The two MUST NOT disagree in a way that reports a version other than the manifest's when the manifest has one.
 - `app.engineInfo.contractVersion` MUST equal `engawa.contractVersion` (§1.1) — one source of truth for the running contract.
 - `app.quit` terminates the app; a well-behaved host runs its normal shutdown (windows may still receive `window.closeRequested` per §4.2 if the app wired it). Because it ends the process, the conformance suite specs it but does not invoke it — the `make notes` gate exercises quit/relaunch end to end.
 

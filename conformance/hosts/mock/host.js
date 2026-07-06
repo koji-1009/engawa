@@ -460,7 +460,9 @@ function createMockHost(options = {}) {
       const value = await handler(frame.args);
       emit({ t: 'res', id: frame.id, ok: true, value: value === undefined ? null : value });
     } catch (e) {
-      emit({ t: 'res', id: frame.id, ok: false, err: { code: e.code || 'EUNKNOWN', message: e.message || String(e) } });
+      // A leaked error with no code MUST NOT cross the wire as an unregistered code
+      // (spec/errors.md); default to EIO, matching the macOS and C++ host catch-alls.
+      emit({ t: 'res', id: frame.id, ok: false, err: { code: e.code || 'EIO', message: e.message || String(e) } });
     }
   }
 

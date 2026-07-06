@@ -17,15 +17,23 @@ final class EngawaHost: NSObject {
     static let contractVersion = "0.1.0"   // DRAFT — pre-1.0 semver until the contract is frozen
     static let hostVersion = "macos-host-0.1.0"
     static let engineFloor = "605.1.15"    // WebKit floor (§9); modern WebKit far exceeds it
+    static let undetectedEngine = "unknown"   // §9: the version reported when engine detection fails
 
-    // Detected engine version, or the ENGAWA_FAKE_ENGINE_VERSION substitute (§9 testability hook).
-    static func engineVersion(env: [String: String]) -> String {
+    // Detected engine version, or nil if detection failed. Testability hooks (§9):
+    // ENGAWA_FAKE_ENGINE_VERSION substitutes the detected value; ENGAWA_FORCE_ENGINE_UNDETECTED
+    // forces the detection-failure path so the fail-closed behavior can be exercised.
+    static func detectedEngineVersion(env: [String: String]) -> String? {
+        if env["ENGAWA_FORCE_ENGINE_UNDETECTED"] == "1" { return nil }
         if let fake = env["ENGAWA_FAKE_ENGINE_VERSION"] { return fake }
-        return (Bundle(identifier: "com.apple.WebKit")?.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "99999"
+        return Bundle(identifier: "com.apple.WebKit")?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
     }
 
     static func meetsEngineFloor(_ version: String) -> Bool {
         func parts(_ s: String) -> [Int] { s.split(separator: ".").map { Int($0) ?? 0 } }
+        // Fail closed (§9): a version with no leading numeric component — the `undetectedEngine`
+        // sentinel written when detection fails, or any garbage — can never satisfy a numeric
+        // floor. Detection failure MUST route to the rejection screen, never be assumed newest.
+        guard let lead = version.split(separator: ".").first, Int(lead) != nil else { return false }
         let v = parts(version), floor = parts(engineFloor)
         for i in 0..<max(v.count, floor.count) {
             let a = i < v.count ? v[i] : 0, b = i < floor.count ? floor[i] : 0
@@ -84,9 +92,19 @@ final class EngawaHost: NSObject {
         }
         self.shellJS = shellSrc
         self.dirs = AppDirs.resolve(env: env)
-        self.appVersion = env["ENGAWA_APP_VERSION"] ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
-        self.engineVersion = Self.engineVersion(env: env)
-        self.manifest = Manifest.load(env: env)
+        let manifest = Manifest.load(env: env)
+        self.manifest = manifest
+        // app.version comes from the app's manifest (engawa.json) — its declared identity, the same
+        // version the update flow (§8) reasons about (spec/commands/app.md). Precedence: the
+        // ENGAWA_APP_VERSION test override, then the manifest, then the host bundle's Info.plist,
+        // then a last-resort default. Must be computed AFTER the manifest is loaded.
+        self.appVersion = env["ENGAWA_APP_VERSION"]
+            ?? manifest?.version
+            ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+            ?? "0.0.0"
+        // Fail closed on detection failure (§9): substitute the `undetectedEngine` sentinel, which
+        // is below every real floor, rather than a value that would be assumed above it.
+        self.engineVersion = Self.detectedEngineVersion(env: env) ?? Self.undetectedEngine
 
         // App assets seed: ENGAWA_APP_ROOT, else <bundle>/Resources/app.
         let seed = env["ENGAWA_APP_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -303,7 +321,11 @@ final class EngawaHost: NSObject {
             } catch let e as AdapterError {
                 enqueue(errFrame(id, e.code, e.message))
             } catch {
-                enqueue(errFrame(id, "EUNKNOWN", "\(error)"))
+                // A leaked non-AdapterError MUST NOT cross the wire as an unregistered code
+                // (spec/errors.md: every code is registered; EUNKNOWN is not). Default to EIO,
+                // the registry's generic "an underlying operation failed" fallback — matches the
+                // C++ hosts' dispatcher catch-all.
+                enqueue(errFrame(id, "EIO", "\(error)"))
             }
         }
     }
@@ -361,6 +383,12 @@ final class EngawaHost: NSObject {
                     let reqId = ctl["reqId"] as? Int ?? -1
                     let url = ctl["url"] as? String ?? ""
                     Task { @MainActor [weak self] in self?.runIoGet(reqId: reqId, url: url) }
+                case "ioCorsHeaders":   // §5a: report the exact CORS headers the last io response emitted
+                    let reqId = ctl["reqId"] as? Int ?? -1
+                    Task { @MainActor [weak self] in
+                        let h = self?.schemeHandler.lastIoCorsHeaders() ?? [:]
+                        Out.line(["ctl": "result", "reqId": reqId, "ok": true, "value": h])
+                    }
                 case "introspect":
                     let reqId = ctl["reqId"] as? Int ?? -1
                     Task { @MainActor [weak self] in self?.runIntrospect(reqId: reqId) }
@@ -405,7 +433,7 @@ final class EngawaHost: NSObject {
               function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:(e&&e.code)||'EUNKNOWN', message:String((e&&e.message)||e)}}); }
             );
           } catch(err){
-            window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'ETHROW', message:String(err)}});
+            window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EUNKNOWN', message:String(err)}});
           }
         })();
         """
@@ -486,7 +514,7 @@ final class EngawaHost: NSObject {
           fetch(\(JSON.jsStringLiteral(url)), { method:'PUT', body: bytes })
             .then(function(r){ return r.json(); })
             .then(function(j){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:j}); })
-            .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EFETCH', message:String((e&&e.message)||e)}}); });
+            .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EIO', message:String((e&&e.message)||e)}}); });
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -502,7 +530,7 @@ final class EngawaHost: NSObject {
               for (var i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
               window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:true, value:{ base64: btoa(bin), len: bytes.length }});
             })
-            .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EFETCH', message:String((e&&e.message)||e)}}); });
+            .catch(function(e){ window.webkit.messageHandlers.engawaCtl.postMessage({ctl:'result', reqId:\(reqId), ok:false, err:{code:'EIO', message:String((e&&e.message)||e)}}); });
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
