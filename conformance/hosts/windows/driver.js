@@ -73,7 +73,7 @@ function spawnProbe(extraEnv, onMessage, timeoutValue) {
     let done = false, b = '';
     const finish = (r) => {
       if (done) return; done = true;
-      try { c.kill(); } catch { /* ignore */ }
+      try { c.kill("SIGKILL"); } catch { /* ignore */ }
       try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
       try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
       resolve(r);
@@ -226,7 +226,7 @@ function connectWindowsHost() {
         resolve();
       });
       send({ ctl: 'quit' });
-      setTimeout(() => { try { child.kill(); } catch { /* ignore */ } }, 3000);
+      setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ignore */ } }, 3000);
     });
   }
 

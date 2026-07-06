@@ -266,6 +266,9 @@ private:
             if (!args["maxBytes"].is_number()) throw EngawaError::invalid("bad maxBytes");
             double mb = args["maxBytes"].get<double>();
             if (mb < 0) throw EngawaError::invalid("bad maxBytes");
+            // mb >= 0 here, but still may exceed INT_MAX (e.g. 1e300); static_cast<int> of an
+            // out-of-range double is UB, so clamp before the cast.
+            if (mb > static_cast<double>(INT_MAX)) mb = static_cast<double>(INT_MAX);
             maxBytes = static_cast<int>(mb);
         }
         StreamBuf& which = (streamArg && *streamArg == "stderr") ? st->err : st->out;

@@ -1,13 +1,15 @@
 #include "IoChannel.hpp"
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <objbase.h>
 
 #include <cstdio>
 
 namespace {
-// A URL-safe opaque id from a fresh GUID (host process, not a resumable workflow — randomness is fine).
-std::string newId() {
+
+// Fallback id from a fresh GUID, used only if BCryptGenRandom fails (should not happen).
+std::string guidId() {
     GUID g{};
     CoCreateGuid(&g);
     char buf[33];
@@ -17,6 +19,24 @@ std::string newId() {
                   g.Data4[4], g.Data4[5], g.Data4[6], g.Data4[7]);
     return std::string(buf);
 }
+
+// A URL-safe opaque id: 16 CSPRNG bytes as hex, via BCryptGenRandom — mirrors the Linux host's
+// explicit-CSPRNG approach (libsodium randombytes_buf there). A predictable app://io token id would
+// let hostile in-page script race a legitimate fetch for the target file (§5a).
+std::string newId() {
+    unsigned char raw[16];
+    NTSTATUS status = BCryptGenRandom(nullptr, raw, sizeof(raw), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (status != 0) return guidId();  // should not happen; never return an empty id
+    static const char* hex = "0123456789abcdef";
+    std::string id;
+    id.reserve(32);
+    for (unsigned char b : raw) {
+        id.push_back(hex[b >> 4]);
+        id.push_back(hex[b & 0xf]);
+    }
+    return id;
+}
+
 }  // namespace
 
 std::string IoChannel::mint(const std::string& path, bool write) {
