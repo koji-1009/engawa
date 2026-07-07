@@ -73,7 +73,7 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
             bootedSlot = current
             return slotDir(current)
         }
-        var attempts = readHealthAttempts() + 1
+        let attempts = readHealthAttempts() + 1
         if attempts > 2 {
             try? FileManager.default.removeItem(at: pendingFile)
             try? FileManager.default.removeItem(at: healthFile)
