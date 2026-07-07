@@ -26,6 +26,15 @@ const BUNDLE_ROOT = path.join(REPO, 'conformance', 'fixtures', 'bundle');
 // floor, which is why the suite takes these from the driver — engine.test.js.)
 const ENGINE_FLOOR_SAMPLES = { below: '2.20.0', above: '99999' };
 
+// A stdin write to a probe/host that has already exited emits an async 'error' (EPIPE) on the stream;
+// a synchronous try/catch around write() does NOT catch it, so an unlistened 'error' crashes the
+// runner. Attach a no-op error handler to every spawned child's stdin.
+function spawnGuarded(...args) {
+  const c = spawn(...args);
+  if (c.stdin) c.stdin.on('error', () => {});
+  return c;
+}
+
 function resolveHostBin() {
   // ENGAWA_HOST_BIN lets the suite run against a specific build; otherwise the CMake output produced
   // by `make host-linux` (hosts/linux/build.sh).
@@ -81,7 +90,7 @@ function spawnProbe(extraEnv, onMessage, timeoutValue) {
     const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-probe-'));
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-probedata-'));
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ...extraEnv },
       stdio: ['pipe', 'pipe', 'ignore'],
@@ -134,7 +143,7 @@ function connectLinuxHost() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
   const trustRootB64 = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64');
 
-  const child = spawn(HOST_BIN, [], {
+  const child = spawnGuarded(HOST_BIN, [], {
     env: {
       ...process.env,
       ENGAWA_CONFORMANCE: '1',
