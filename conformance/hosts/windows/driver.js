@@ -59,6 +59,23 @@ function checkNonAppInjection() {
   }, { timeout: true });
 }
 
+// §3.1 composition: a host built from the MINIMAL fixture (declares no clipboard) must neither
+// advertise nor serve it — capabilities omits it and invoking it is a local ENOTSUP (§1.1).
+function checkComposition() {
+  const minimal = path.join(REPO, 'conformance', 'fixtures', 'minimal');
+  let caps = null;
+  return spawnProbe({ ENGAWA_BUNDLE_ROOT: minimal }, (m, finish, child) => {
+    if (m.ctl === 'ready') {
+      try { child.stdin.write(JSON.stringify({ ctl: 'introspect', reqId: 1 }) + '\n'); } catch { /* gone */ }
+    } else if (m.ctl === 'result' && m.reqId === 1) {
+      caps = (m.value && m.value.capabilities) || [];
+      try { child.stdin.write(JSON.stringify({ ctl: 'invoke', reqId: 2, cmd: 'clipboard.readText', args: null }) + '\n'); } catch { /* gone */ }
+    } else if (m.ctl === 'result' && m.reqId === 2) {
+      finish({ capabilities: caps, clipboardCode: m.ok ? null : (m.err && m.err.code) });
+    }
+  }, { capabilities: [], clipboardCode: 'TIMEOUT', timeout: true });
+}
+
 // Shared throwaway-host driver for the §9/§10/§6 probes.
 function spawnProbe(extraEnv, onMessage, timeoutValue) {
   return new Promise((resolve) => {
@@ -211,6 +228,7 @@ function connectWindowsHost() {
     checkNonAppInjection: () => checkNonAppInjection(),
     checkEngineFloor: (v) => checkEngineFloor(v),
     checkStorageWipe: () => checkStorageWipe(),
+    checkComposition: () => checkComposition(),
     engineFloorSamples: ENGINE_FLOOR_SAMPLES,
     signFile: (p) => {
       const digest = crypto.createHash('sha256').update(fs.readFileSync(p)).digest();

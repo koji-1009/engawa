@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "Bridge.hpp"
@@ -37,6 +38,19 @@ std::optional<std::string> manifestString(const std::string& bundleRoot, const s
     return (*o)[key].get<std::string>();
 }
 
+// The string entries of an engawa.json array field (e.g. `namespaces`, §3.1) — an empty set if the
+// key is absent or not an array.
+std::set<std::string> manifestStringArray(const std::string& bundleRoot, const std::string& key) {
+    std::set<std::string> out;
+    auto o = Files::readJsonObject(U8(P(bundleRoot) / L"engawa.json"));
+    if (o && o->contains(key) && (*o)[key].is_array()) {
+        for (const auto& e : (*o)[key]) {
+            if (e.is_string()) out.insert(e.get<std::string>());
+        }
+    }
+    return out;
+}
+
 // §7.3: the default CSP plus any engawa.json relaxations, applied verbatim (no silent widening).
 std::string buildCsp(const std::string& bundleRoot) {
     std::string csp = "default-src app:; script-src app:";
@@ -47,25 +61,34 @@ std::string buildCsp(const std::string& bundleRoot) {
 
 void registerAdapters(Dispatcher& d, Bridge& bridge, Window& window, const HostOptions& opts,
                       IoChannel& io, const std::string& appVersion, UpdateHost& updateHost) {
-    // The vertical-slice command (conformance echo/limits tests).
-    d.registerAdapter(makeEchoAdapter(), &bridge);
+    // §3.1 composition: mandatory core (app, window, update, path) is always composed; every other
+    // namespace only when the app declares it in engawa.json, so `capabilities` equals the composed
+    // set and an undeclared namespace is rejected locally with ENOTSUP (§1.1). echo is conformance-only.
+    const std::set<std::string> declared = manifestStringArray(opts.bundleRoot, "namespaces");
+    const auto declares = [&](const char* ns) { return declared.count(ns) > 0; };
 
-    // Built-in namespaces (§4) — adapters that ship in-tree; no privileged dispatch path (§3).
+    // echo — the vertical-slice command; conformance-only (§3.1), never in a production host.
+    if (opts.conformance) d.registerAdapter(makeEchoAdapter(), &bridge);
+
+    // Mandatory core (§3.1) — always composed.
     d.registerAdapter(makeWindowAdapter(window, &bridge, opts), &bridge);
-    d.registerAdapter(makeDialogAdapter(window, opts), &bridge);
-    d.registerAdapter(makeFsAdapter(io), &bridge);
     d.registerAdapter(makePathAdapter(opts), &bridge);
-    d.registerAdapter(makeClipboardAdapter(), &bridge);
-    d.registerAdapter(makeShellOpenAdapter(opts), &bridge);
-    d.registerAdapter(makeNotificationAdapter(opts), &bridge);
-    d.registerAdapter(makeProcessAdapter(&bridge, opts), &bridge);
     d.registerAdapter(makeAppAdapter(appVersion, [&bridge] { return bridge.engineVersion(); }, opts,
                                      [&window] { window.post([&window] { window.closeWindow(); }); }),
                       &bridge);
-
-    // `update` is contract-coupled (§7.1/§8): it versions with the contract and is composed into
-    // EVERY host, not an app's choice (docs/design.md "Composition").
+    // `update` is contract-coupled (§7.1/§8): composed into EVERY host (docs/design.md "Composition").
     d.registerAdapter(makeUpdateAdapter(updateHost, opts), &bridge);
+
+    // Per-app: composed only when declared. (First migrated namespace; fs/dialog/shellOpen/
+    // notification/process follow the same gate — spec §3.1.)
+    if (declares("clipboard")) d.registerAdapter(makeClipboardAdapter(), &bridge);
+
+    // Still always-composed pending migration to the §3.1 gate.
+    d.registerAdapter(makeDialogAdapter(window, opts), &bridge);
+    d.registerAdapter(makeFsAdapter(io), &bridge);
+    d.registerAdapter(makeShellOpenAdapter(opts), &bridge);
+    d.registerAdapter(makeNotificationAdapter(opts), &bridge);
+    d.registerAdapter(makeProcessAdapter(&bridge, opts), &bridge);
 
     // The app's declared adapters (§3 static composition). registerAppAdapters is provided by a
     // Compose translation unit: the default in-tree build registers the reference `sqlite`; a
