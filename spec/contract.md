@@ -84,6 +84,12 @@ protocol Adapter {
 
 Built-in namespaces (§4) are adapters that ship in-tree. There is no privileged dispatch path.
 
+### 3.1 Composition (normative)
+
+A namespace is either **mandatory** — composed into every host — or **per-app** — composed only when the app declares it in its manifest (`engawa.json`). The mandatory core is exactly `app`, `window`, `update`, and `path`: identity/lifecycle (§1.1 handshake), the window, the update mechanism (a host obligation, §7.1/§8), and app-data path resolution. Every other namespace — `fs`, `notification`, `clipboard`, `dialog`, `shellOpen`, `process`, and every external adapter — is **per-app**: an app that does not declare it gets a host that does not serve it, and does not carry any OS permission or entitlement it would imply. `echo` exists for conformance only and MUST NOT be composed into a production host.
+
+`capabilities` MUST equal exactly the composed set: a host MUST NOT advertise a namespace it has not composed, and MUST NOT serve one it has not advertised. Because §1.1 gates invocation on `capabilities`, invoking an undeclared namespace rejects locally with `ENOTSUP` and never reaches the host. Composition is static, at app build time; whether a host still carries the unreached code of an undeclared namespace is an implementation detail, but it MUST NOT be reachable or advertised.
+
 ## 4. Built-in command set v1
 
 | Namespace | Commands |

@@ -166,6 +166,49 @@ function checkNonAppInjection() {
   });
 }
 
+// §3.1 composition: spawn a throwaway host composed from a MINIMAL fixture (declares no `clipboard`)
+// and confirm the namespace is neither advertised nor served — `capabilities` omits it and invoking
+// it rejects locally with ENOTSUP (the reject never reaches the host, per §1.1).
+function checkComposition() {
+  return new Promise((resolve) => {
+    const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-comp-'));
+    fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
+    const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-compdata-'));
+    const minimal = path.join(REPO, 'conformance', 'fixtures', 'minimal');
+    const c = spawn(HOST_BIN, [], {
+      env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
+             ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_BUNDLE_ROOT: minimal },
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let done = false, b = '', caps = null;
+    const finish = (r) => {
+      if (done) return; done = true;
+      try { c.kill('SIGKILL'); } catch { /* ignore */ }
+      try { fs.rmSync(aroot, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(droot, { recursive: true, force: true }); } catch { /* ignore */ }
+      resolve(r);
+    };
+    const send = (o) => { try { c.stdin.write(JSON.stringify(o) + '\n'); } catch { /* gone */ } };
+    c.stdout.on('data', (d) => {
+      b += d.toString('utf8');
+      let i;
+      while ((i = b.indexOf('\n')) >= 0) {
+        const line = b.slice(0, i); b = b.slice(i + 1);
+        if (!line.trim()) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.ctl === 'ready') send({ ctl: 'introspect', reqId: 1 });
+        else if (m.ctl === 'result' && m.reqId === 1) {
+          caps = (m.value && m.value.capabilities) || [];
+          send({ ctl: 'invoke', reqId: 2, cmd: 'clipboard.readText', args: null });
+        } else if (m.ctl === 'result' && m.reqId === 2) {
+          finish({ capabilities: caps, clipboardCode: m.ok ? null : (m.err && m.err.code) });
+        }
+      }
+    });
+    setTimeout(() => finish({ capabilities: caps || [], clipboardCode: 'TIMEOUT', timeout: true }), 8000);
+  });
+}
+
 function connectMacosHost() {
   if (!fs.existsSync(HOST_BIN)) {
     throw new Error(`macOS host not built: ${HOST_BIN} — run \`swift build\` in hosts/macos (or \`make conformance\`)`);
@@ -298,6 +341,8 @@ function connectMacosHost() {
     checkEngineFloor: (v) => checkEngineFloor(v),
     // §9 fail-closed — spawns a host with engine detection forced to fail.
     checkEngineUndetected: () => checkEngineUndetected(),
+    // §3.1 composition — spawns a host from a minimal fixture that declares no clipboard.
+    checkComposition: () => checkComposition(),
     // §10 boot-after-storage-wipe — spawns a host that wipes WebView storage at boot.
     checkStorageWipe: () => checkStorageWipe(),
     // Sign a payload file with the dev private key (§7.1) — used by the update conformance.
