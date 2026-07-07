@@ -29,7 +29,7 @@ final class ShellOpenAdapter: Adapter, @unchecked Sendable {
             if conformance {
                 record(["action": .string("openExternal"), "url": .string(url)])
             } else {
-                await MainActor.run { NSWorkspace.shared.open(u) }
+                _ = await MainActor.run { NSWorkspace.shared.open(u) }
             }
             return .null
 
