@@ -96,11 +96,19 @@ function(engawa_add_host TARGET)
     "${ENGAWA_WINDOWS_DIR}/src"
     "${DEPS}"            # <nlohmann/json.hpp>
     "${DEPS}/tweetnacl"  # tweetnacl.h
-    "${WEBVIEW2_INCLUDE}"
     ${ENGAWA_EXTRA_INCLUDES})
+  # The WebView2 SDK headers are Microsoft's, not ours — mark them SYSTEM so /W4 applies to our code
+  # only (the analog of the /w on the vendored tweetnacl.c below). /external:W0 makes MSVC honour it.
+  target_include_directories(${TARGET} SYSTEM PRIVATE "${WEBVIEW2_INCLUDE}")
 
   target_compile_definitions(${TARGET} PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_compile_options(${TARGET} PRIVATE /utf-8)
+  target_compile_options(${TARGET} PRIVATE /utf-8 /W4 /external:W0)
+  # Opt-in (CI only): promote warnings to errors. NOT default — a downstream `engawa build` must not
+  # break on a toolchain's new warning; only CI sets ENGAWA_WERROR.
+  if(DEFINED ENV{ENGAWA_WERROR})
+    message(STATUS "ENGAWA_WERROR set — C++ warnings are errors (/WX)")
+    target_compile_options(${TARGET} PRIVATE /WX)
+  endif()
   set_source_files_properties("${TWEETNACL_C}" PROPERTIES COMPILE_OPTIONS "/w")
 
   target_link_libraries(${TARGET} PRIVATE

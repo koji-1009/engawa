@@ -57,7 +57,7 @@ private:
     Json size() { return Json{{"width", width_}, {"height", height_}}; }
 
     Json setSize(const Json& args) {
-        double w, h;
+        double w = 0, h = 0;  // set by tryGetDouble on success; init quiets a false-positive C4701
         if (!ja::tryGetDouble(args, "width", w) || !ja::tryGetDouble(args, "height", h))
             throw EngawaError::invalid("width/height required");
         width_ = static_cast<int>(w);
