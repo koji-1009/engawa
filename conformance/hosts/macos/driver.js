@@ -23,6 +23,15 @@ const BUNDLE_ROOT = path.join(REPO, 'conformance', 'fixtures', 'bundle');
 // floor's version scheme is per-engine — a fixed pair would misjudge the Chromium/WebKitGTK hosts.
 const ENGINE_FLOOR_SAMPLES = { below: '600.0', above: '99999' };
 
+// A stdin write to a probe/host that has already exited emits an async 'error' (EPIPE) on the stream;
+// a synchronous try/catch around write() does NOT catch it, so an unlistened 'error' crashes the
+// runner. Attach a no-op error handler to every spawned child's stdin.
+function spawnGuarded(...args) {
+  const c = spawn(...args);
+  if (c.stdin) c.stdin.on('error', () => {});
+  return c;
+}
+
 // §9: spawn a throwaway host with a faked engine version and observe whether it rejects the
 // engine floor (no boot) or reaches ready. Independent of the connected host.
 function checkEngineFloor(fakeVersion) {
@@ -30,7 +39,7 @@ function checkEngineFloor(fakeVersion) {
     const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-floor-'));
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-floordata-'));
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_FAKE_ENGINE_VERSION: String(fakeVersion) },
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -69,7 +78,7 @@ function checkEngineUndetected() {
     const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-undet-'));
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-undetdata-'));
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_FORCE_ENGINE_UNDETECTED: '1' },
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -103,7 +112,7 @@ function checkStorageWipe() {
     const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-wipe-'));
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-wipedata-'));
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_WIPE_STORAGE: '1' },
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -138,7 +147,7 @@ function checkNonAppInjection() {
     const aroot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-nonapp-'));
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-nonappdata-'));
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_START_URL: 'about:blank' },
       stdio: ['pipe', 'pipe', 'ignore'],
@@ -175,7 +184,7 @@ function checkComposition() {
     fs.writeFileSync(path.join(aroot, 'index.html'), '<!doctype html><meta charset="utf-8"><title>x</title>');
     const droot = fs.mkdtempSync(path.join(os.tmpdir(), 'engawa-compdata-'));
     const minimal = path.join(REPO, 'conformance', 'fixtures', 'minimal');
-    const c = spawn(HOST_BIN, [], {
+    const c = spawnGuarded(HOST_BIN, [], {
       env: { ...process.env, ENGAWA_CONFORMANCE: '1', ENGAWA_SHELL_JS: SHELL_JS,
              ENGAWA_APP_ROOT: aroot, ENGAWA_DATA_ROOT: droot, ENGAWA_BUNDLE_ROOT: minimal },
       stdio: ['pipe', 'pipe', 'ignore'],
@@ -237,7 +246,7 @@ function connectMacosHost() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
   const trustRootB64 = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64');
 
-  const child = spawn(HOST_BIN, [], {
+  const child = spawnGuarded(HOST_BIN, [], {
     env: {
       ...process.env,
       ENGAWA_CONFORMANCE: '1',
