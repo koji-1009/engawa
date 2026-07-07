@@ -100,7 +100,7 @@ function(engawa_add_host TARGET)
     ${ENGAWA_EXTRA_INCLUDES})
 
   target_compile_definitions(${TARGET} PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_compile_options(${TARGET} PRIVATE /utf-8)
+  target_compile_options(${TARGET} PRIVATE /utf-8 /W4)
   set_source_files_properties("${TWEETNACL_C}" PROPERTIES COMPILE_OPTIONS "/w")
 
   target_link_libraries(${TARGET} PRIVATE

@@ -67,8 +67,9 @@ function(engawa_add_host TARGET)
     ${GTK_INCLUDE_DIRS} ${WEBKIT_INCLUDE_DIRS} ${SOUP_INCLUDE_DIRS} ${SODIUM_INCLUDE_DIRS}
     ${ENGAWA_EXTRA_INCLUDES})
 
-  # WebKitGTK's per-instance website-data-manager context ctor is deprecated in 2.4x but is the 4.1 API.
-  target_compile_options(${TARGET} PRIVATE -Wno-deprecated-declarations
+  # -Wall/-Wextra on our sources; -Wno-deprecated-declarations because WebKitGTK's per-instance
+  # website-data-manager context ctor is deprecated in 2.4x but is the 4.1 API we target.
+  target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wno-deprecated-declarations
     ${GTK_CFLAGS_OTHER} ${WEBKIT_CFLAGS_OTHER} ${SOUP_CFLAGS_OTHER})
 
   target_link_directories(${TARGET} PRIVATE
