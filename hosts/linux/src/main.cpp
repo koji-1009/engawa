@@ -75,16 +75,13 @@ void registerAdapters(Dispatcher& d, Bridge& bridge, Window& window, const HostO
     // `update` is contract-coupled (§7.1/§8): composed into EVERY host (docs/design.md "Composition").
     d.registerAdapter(makeUpdateAdapter(updateHost, opts), &bridge);
 
-    // Per-app: composed only when declared. (First migrated namespace; fs/dialog/shellOpen/
-    // notification/process follow the same gate — spec §3.1.)
+    // Per-app namespaces (§3.1): composed only when the app declares them in engawa.json.
+    if (declares("fs")) d.registerAdapter(makeFsAdapter(io), &bridge);
     if (declares("clipboard")) d.registerAdapter(makeClipboardAdapter(opts), &bridge);
-
-    // Still always-composed pending migration to the §3.1 gate.
-    d.registerAdapter(makeDialogAdapter(window, opts), &bridge);
-    d.registerAdapter(makeFsAdapter(io), &bridge);
-    d.registerAdapter(makeShellOpenAdapter(opts), &bridge);
-    d.registerAdapter(makeNotificationAdapter(opts), &bridge);
-    d.registerAdapter(makeProcessAdapter(&bridge, opts), &bridge);
+    if (declares("dialog")) d.registerAdapter(makeDialogAdapter(window, opts), &bridge);
+    if (declares("shellOpen")) d.registerAdapter(makeShellOpenAdapter(opts), &bridge);
+    if (declares("notification")) d.registerAdapter(makeNotificationAdapter(opts), &bridge);
+    if (declares("process")) d.registerAdapter(makeProcessAdapter(&bridge, opts), &bridge);
 
     // The app's declared adapters (§3 static composition). registerAppAdapters is provided by a Compose
     // translation unit: the default in-tree build registers the reference `sqlite`; a per-app

@@ -1,6 +1,6 @@
 {
   "id": "dev.engawa.conformance",
   "version": "3.1.4",
-  "namespaces": ["clipboard"],
+  "namespaces": ["fs", "clipboard", "dialog", "shellOpen", "notification", "process"],
   "sidecars": ["./bin/echo-sidecar"]
 }

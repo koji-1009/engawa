@@ -1,6 +1,7 @@
 {
   "id": "dev.engawa.notes",
   "version": "1.0.0",
+  "namespaces": ["fs"],
   "adapters": [
     {
       "package": "sqlite",
