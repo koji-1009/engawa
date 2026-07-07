@@ -47,9 +47,11 @@ Gate mechanics (fixed decisions — do not re-open):
 
 `spec/` is DRAFT and grows with implementation until tagged `contract-1.0.0`. After the tag: additive-only within the major version; the handshake's `contractVersion` carries negotiation.
 
-## Clean-room rule (hosts/windows, hosts/linux)
+## Cross-host discipline (supersedes the clean-room rule)
 
-Implemented from `spec/` + `shell-js/` + `conformance/` + adapter `spec.md`s only. Do not read `hosts/macos/` source. If blocked, the block is a spec hole: fix `spec/`, then proceed.
+The clean-room rule — Windows/Linux implemented without reading `hosts/macos/` source — did its job: it bootstrapped three independent hosts and shook the spec holes out during initial implementation. It is **retired**. Going forward, cross-host consistency is held by two standing disciplines, not by author blindness:
+- **Spec-first**: a behavior lands in `spec/` (and a conformance test) before any host implements it. Ambiguity resolves in `spec/`, never in host-specific behavior.
+- **Conformance-green on every host**: the one suite runs against all three real hosts (and the mock); a cross-host change is not done until it is green on every leg. CI (`.github/workflows`) enforces this on every change.
 
 Note: `update` is not an ordinary adapter. Contract §7.1 (signature verification before anything lands under `app://`, embedded trust root) and the atomic asset-root swap are **host obligations** — a host is non-conformant without them, regardless of adapter presence.
 
