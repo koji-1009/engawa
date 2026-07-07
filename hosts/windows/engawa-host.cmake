@@ -103,6 +103,12 @@ function(engawa_add_host TARGET)
 
   target_compile_definitions(${TARGET} PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_compile_options(${TARGET} PRIVATE /utf-8 /W4 /external:W0)
+  # Opt-in (CI only): promote warnings to errors. NOT default — a downstream `engawa build` must not
+  # break on a toolchain's new warning; only CI sets ENGAWA_WERROR.
+  if(DEFINED ENV{ENGAWA_WERROR})
+    message(STATUS "ENGAWA_WERROR set — C++ warnings are errors (/WX)")
+    target_compile_options(${TARGET} PRIVATE /WX)
+  endif()
   set_source_files_properties("${TWEETNACL_C}" PROPERTIES COMPILE_OPTIONS "/w")
 
   target_link_libraries(${TARGET} PRIVATE

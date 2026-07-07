@@ -71,6 +71,12 @@ function(engawa_add_host TARGET)
   # website-data-manager context ctor is deprecated in 2.4x but is the 4.1 API we target.
   target_compile_options(${TARGET} PRIVATE -Wall -Wextra -Wno-deprecated-declarations
     ${GTK_CFLAGS_OTHER} ${WEBKIT_CFLAGS_OTHER} ${SOUP_CFLAGS_OTHER})
+  # Opt-in (CI only): promote warnings to errors so a regression fails the build. NOT default — an app
+  # author's `engawa build` must not break on a toolchain's new warning; only CI sets ENGAWA_WERROR.
+  if(DEFINED ENV{ENGAWA_WERROR})
+    message(STATUS "ENGAWA_WERROR set — C++ warnings are errors (-Werror)")
+    target_compile_options(${TARGET} PRIVATE -Werror)
+  endif()
 
   target_link_directories(${TARGET} PRIVATE
     ${GTK_LIBRARY_DIRS} ${WEBKIT_LIBRARY_DIRS} ${SOUP_LIBRARY_DIRS} ${SODIUM_LIBRARY_DIRS})
