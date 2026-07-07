@@ -139,19 +139,34 @@ final class EngawaHost: NSObject {
         }
         router = Router(emitter: emitter)
         hostEmitter = emitter
-        router.register(EchoAdapter())
+
+        // §3.1 composition: a namespace is composed only if it is mandatory core or the app declares
+        // it in engawa.json. `capabilities` (line below) then equals exactly the composed set, so an
+        // undeclared namespace is never advertised and §1.1 rejects it locally with ENOTSUP.
+        let declared = Set(manifest?.namespaces ?? [])
+        func declares(_ ns: String) -> Bool { declared.contains(ns) }
+
+        // `echo` is a conformance-only test namespace (§3.1) — never in a production host.
+        if mode == "conformance" { router.register(EchoAdapter()) }
+
+        // Mandatory core (§3.1): app, window, update, path — always composed.
         router.register(PathAdapter(dirs: dirs))
-        router.register(FsAdapter(ioTokens: ioTokens))
         router.register(AppAdapter(appVersion: appVersion,
                                    hostVersion: Self.hostVersion,
                                    contractVersion: Self.contractVersion,
                                    engineVersion: engineVersion,
                                    autotest: autotest))
-        // A private pasteboard under conformance so the suite never touches the user's clipboard.
-        let pasteboard = mode == "conformance"
-            ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
-            : NSPasteboard.general
-        router.register(ClipboardAdapter(pasteboard: pasteboard))
+        // Per-app: composed only when declared. (First migrated namespace; fs/dialog/shellOpen/
+        // notification/process follow the same gate — see spec §3.1.)
+        if declares("clipboard") {
+            // A private pasteboard under conformance so the suite never touches the user's clipboard.
+            let pasteboard = mode == "conformance"
+                ? NSPasteboard(name: NSPasteboard.Name("dev.engawa.conformance"))
+                : NSPasteboard.general
+            router.register(ClipboardAdapter(pasteboard: pasteboard))
+        }
+        // Still always-composed pending migration to the §3.1 gate:
+        router.register(FsAdapter(ioTokens: ioTokens))
         windowController = WindowController(emitter: emitter, conformance: mode == "conformance")
         router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
         router.register(ShellOpenAdapter(conformance: mode == "conformance"))

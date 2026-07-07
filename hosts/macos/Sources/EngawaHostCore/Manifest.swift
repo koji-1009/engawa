@@ -7,6 +7,9 @@ struct Manifest {
     let id: String
     let version: String
     let sidecars: [String]
+    // Per-app namespaces the app opts into (contract §3.1). The mandatory core (app, window,
+    // update, path) is always composed regardless; this declares the rest.
+    let namespaces: [String]
     let bundleRoot: URL
 
     static func load(env: [String: String]) -> Manifest? {
@@ -16,12 +19,13 @@ struct Manifest {
         let url = bundleRoot.appendingPathComponent("engawa.json")
         guard let data = try? Data(contentsOf: url),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return Manifest(id: "unknown", version: "0.0.0", sidecars: [], bundleRoot: bundleRoot)
+            return Manifest(id: "unknown", version: "0.0.0", sidecars: [], namespaces: [], bundleRoot: bundleRoot)
         }
         return Manifest(
             id: obj["id"] as? String ?? "unknown",
             version: obj["version"] as? String ?? "0.0.0",
             sidecars: (obj["sidecars"] as? [Any])?.compactMap { $0 as? String } ?? [],
+            namespaces: (obj["namespaces"] as? [Any])?.compactMap { $0 as? String } ?? [],
             bundleRoot: bundleRoot
         )
     }

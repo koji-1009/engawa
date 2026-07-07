@@ -4,6 +4,7 @@
 
 require('./echo.test');
 require('./capabilities.test');
+require('./composition.test');
 require('./csp.test');
 require('./injection.test');
 require('./engine.test');
