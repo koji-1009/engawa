@@ -166,7 +166,7 @@ test('update: staging a fresh payload resets the rollback budget (§8)', async f
   fs.rmSync(pa, { force: true }); fs.rmSync(pb, { force: true });
 });
 
-test('update.evaluate applies the §8 compatibility rule (app-update vs full-update)', async function (engawa) {
+test('update.evaluate classifies mode only — it does NOT announce installable (§153)', async function (engawa) {
   if (!has(engawa)) return;
   var appOnly = await engawa.invoke('update.evaluate', {
     manifest: { app: { version: '2.0.0', contractRequired: '0.1.0', capabilitiesRequired: ['sqlite'] } },
@@ -174,6 +174,7 @@ test('update.evaluate applies the §8 compatibility rule (app-update vs full-upd
   });
   assertEqual(appOnly.mode, 'app-update', 'satisfied base → app-update');
 
+  // full-update mode is classified, but NO readyToInstall is emitted: nothing is verified yet (§153).
   var events = [];
   var off = engawa.on('update.readyToInstall', function (p) { events.push(p); });
   var full = await engawa.invoke('update.evaluate', {
@@ -181,9 +182,36 @@ test('update.evaluate applies the §8 compatibility rule (app-update vs full-upd
     provided: { contractProvided: '0.1.0', capabilities: ['sqlite', 'update'] },
   });
   assertEqual(full.mode, 'full-update', 'missing capability → full-update');
-  await waitFor(function () { return events.length > 0; }, 2000);
+  await delay(300);   // give any (erroneous) event time to arrive
   off();
-  assertEqual(events[0].version, '2.0.0', 'readyToInstall carried the version');
+  assertEqual(events.length, 0, 'evaluate must NOT emit readyToInstall — nothing is verified yet');
+});
+
+test('update.stageBaseUpdate verifies the installer before announcing it (§153)', async function (engawa) {
+  if (!has(engawa)) return;
+
+  // A verified base installer → readyToInstall carries the version; staged.
+  var payload = writePayload('<title>base v2</title>');
+  var signed = engawa.signFile(payload);
+  var events = [];
+  var off = engawa.on('update.readyToInstall', function (p) { events.push(p); });
+  var r = await engawa.invoke('update.stageBaseUpdate', { payloadPath: payload, hash: signed.hash, signature: signed.signature, version: '2.0.0' });
+  assertEqual(r.staged, true, 'staged');
+  await waitFor(function () { return events.length > 0; }, 2000);
+  assertEqual(events[events.length - 1].version, '2.0.0', 'readyToInstall carried the version after verification');
+
+  // A tampered signature → ESIGNATURE, and NO readyToInstall (never announced unverified).
+  var before = events.length;
+  var badSig = 'AAAA' + signed.signature.slice(4);
+  var err = null;
+  try {
+    await engawa.invoke('update.stageBaseUpdate', { payloadPath: payload, hash: signed.hash, signature: badSig, version: '9.9.9' });
+  } catch (e) { err = e; }
+  assertEqual(err && err.code, 'ESIGNATURE', 'a bad base-installer signature rejects with ESIGNATURE');
+  await delay(300);
+  off();
+  assertEqual(events.length, before, 'no readyToInstall for an unverified base installer');
+  fs.rmSync(payload, { force: true });
 });
 
 test('update.install acknowledges the OS handoff', async function (engawa) {

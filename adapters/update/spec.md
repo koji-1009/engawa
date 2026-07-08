@@ -9,12 +9,13 @@ presence. Speaks two modes over one manifest (§8): app-update (signed asset swa
 | Command | Args | Returns | Notes |
 |---------|------|---------|-------|
 | `update.status` | — | `{ currentSlot, bootingSlot, version, hasPending, pendingSlot }` | Current A/B slot state. `pendingSlot` is the slot a staged update occupies (or `null`); it is always the non-live slot. |
-| `update.evaluate` | `{ manifest, provided }` | `{ mode, version }` | §8 compatibility rule: `mode` is `"app-update"` if the running base (`provided.contractProvided` + `provided.capabilities`) satisfies `manifest.app.contractRequired`/`capabilitiesRequired`, else `"full-update"` (and `update.readyToInstall` is emitted). |
+| `update.evaluate` | `{ manifest, provided }` | `{ mode, version }` | §8 compatibility rule: `mode` is `"app-update"` if the running base (`provided.contractProvided` + `provided.capabilities`) satisfies `manifest.app.contractRequired`/`capabilitiesRequired`, else `"full-update"`. **Classification only** — it MUST NOT emit `update.readyToInstall` (a base payload is not yet verified at evaluate time; contract §153). |
 | `update.stageAppUpdate` | `{ payloadPath, hash, signature, version }` | `{ staged }` | Host verifies (§7.1) then unpacks into the non-live slot and reserves adoption (`pending`, the single atomic commit point). Bad hash → `EHASH`; bad/absent signature → `ESIGNATURE`. |
+| `update.stageBaseUpdate` | `{ payloadPath, hash, signature, version }` | `{ staged }` | full-update: the host verifies the base installer against the trust root (§7.1) — same hash + signature check as `stageAppUpdate`, but the installer is not unpacked into a slot. **Only on success** is `update.readyToInstall` emitted (contract §153: a base payload MUST be verified before it is announced installable). Bad hash → `EHASH`; bad/absent signature → `ESIGNATURE`. |
 | `update.confirmBoot` | — | `null` | The app initialized on the pending slot: adopt it (§8). **Required** — an app that never calls it cannot be updated. |
 | `update.install` | — | `{ handoff }` | full-update handoff; the OS-native replacement is out of contract scope (§8). |
 
-Events: `update.readyToInstall` (payload `{ version }`) — a verified installer is available (full-update).
+Events: `update.readyToInstall` (payload `{ version }`) — a **verified** base installer is available (full-update). Emitted by `stageBaseUpdate` after verification, never by `evaluate`.
 
 ## A/B slots (contract §8, host obligation)
 

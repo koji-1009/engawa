@@ -14,6 +14,11 @@ public protocol UpdateHost: Sendable {
     /// atomic commit point). Rejects unverified payloads with `ESIGNATURE`/`EHASH`.
     func stageAppUpdate(payloadPath: String, hashHex: String, signatureB64: String, version: String) throws
 
+    /// §8 full-update / §153: verify a base installer against the embedded trust root (same hash +
+    /// signature check as `stageAppUpdate`) WITHOUT unpacking it into a slot, so the adapter only
+    /// announces `readyToInstall` once the installer is verified. Rejects with `ESIGNATURE`/`EHASH`.
+    func verifyBaseInstaller(payloadPath: String, hashHex: String, signatureB64: String) throws
+
     /// The app initialized successfully on the pending slot: adopt it (switch `current`,
     /// clear `pending`/`health`). A required command of the `update` namespace (§8).
     func confirmBoot()

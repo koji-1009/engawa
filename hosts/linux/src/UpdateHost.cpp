@@ -119,8 +119,8 @@ Json UpdateHost::status() {
     return o;
 }
 
-Json UpdateHost::stageAppUpdate(const std::string& payloadPath, const std::string& hash,
-                                const std::string& signature, const std::string& version) {
+void UpdateHost::verifyPayload(const std::string& payloadPath, const std::string& hash,
+                              const std::string& signature) {
     if (!Files::exists(payloadPath)) throw EngawaError::noent("no such payload: " + payloadPath);
 
     std::string bytes;
@@ -132,6 +132,20 @@ Json UpdateHost::stageAppUpdate(const std::string& payloadPath, const std::strin
 
     if (!verifySignature(digest, signature))
         throw EngawaError("ESIGNATURE", "payload signature did not verify against the trust root");
+}
+
+// §8 full-update / §153: verify a base installer WITHOUT unpacking it into a slot. The OS-native
+// replacement is out of contract scope; the adapter emits readyToInstall only after this succeeds.
+Json UpdateHost::verifyBaseInstaller(const std::string& payloadPath, const std::string& hash,
+                                     const std::string& signature) {
+    verifyPayload(payloadPath, hash, signature);
+    return Json{{"staged", true}};
+}
+
+Json UpdateHost::stageAppUpdate(const std::string& payloadPath, const std::string& hash,
+                                const std::string& signature, const std::string& version) {
+    // §7.1: verify BEFORE anything is placed under the app:// root.
+    verifyPayload(payloadPath, hash, signature);
 
     // Unpack into the non-live slot — other(bootingSlot), NOT other(current): when a pending slot is
     // booted-but-unconfirmed (bootingSlot != current), the live root is the booting slot, so staging
