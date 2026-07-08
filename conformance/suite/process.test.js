@@ -14,14 +14,23 @@
       await delay(10);
     }
   }
-  async function drain(engawa, pid) {
+  async function drainStream(engawa, pid, stream) {
     var out = '', eof = false, deadline = Date.now() + 5000;
     while (!eof && Date.now() < deadline) {
-      var r = await engawa.invoke('process.read', { pid: pid, stream: 'stdout', maxBytes: 65536 });
+      var r = await engawa.invoke('process.read', { pid: pid, stream: stream, maxBytes: 65536 });
       out += r.data; eof = r.eof;
       if (!r.data && !eof) await delay(10);
     }
     return { out: out, eof: eof };
+  }
+  // Drain BOTH streams: process.exit only fires once stdout AND stderr have reached EOF with empty
+  // buffers (spec/commands/process.md §4.1). Draining stdout alone wedges exit — and times these
+  // tests out — the moment the node sidecar writes a single byte to stderr (e.g. a V8/libmalloc
+  // notice on a loaded CI VM). The stderr text is returned so a failure can report what leaked.
+  async function drain(engawa, pid) {
+    var out = await drainStream(engawa, pid, 'stdout');
+    var err = await drainStream(engawa, pid, 'stderr');
+    return { out: out.out, eof: out.eof && err.eof, err: err.out };
   }
 
   test('spawn → stdinWrite → read echoes input; kill → process.exit', async function (engawa) {
@@ -115,6 +124,7 @@
       eof = r.eof;
       if (!r.data && !eof) await delay(5);
     }
+    await drainStream(engawa, pid, 'stderr');   // exit waits on stderr EOF too (see drain())
     await waitFor(function () { return exits.some(function (e) { return e.pid === pid; }); }, 3000);
     offE();
     assertEqual(total, N, 'received the full firehose volume after resuming (pause/resume cycle works)');
