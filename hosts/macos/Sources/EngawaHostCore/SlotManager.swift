@@ -104,10 +104,10 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
         ])
     }
 
-    func stageAppUpdate(payloadPath: String, hashHex: String, signatureB64: String, version: String) throws {
-        lock.lock(); defer { lock.unlock() }
-
-        // §7.1: verify BEFORE anything is placed under the app:// root.
+    // §7.1 verification, shared by app-update staging and full-update base-installer verification:
+    // the SHA-256 hash and the ed25519 signature over that hash, against the embedded trust root.
+    // Throws ENOENT / EHASH / ESIGNATURE. The caller must hold `lock`.
+    private func verifyPayload(payloadPath: String, hashHex: String, signatureB64: String) throws {
         guard let payload = try? Data(contentsOf: URL(fileURLWithPath: payloadPath)) else {
             throw AdapterError("ENOENT", "payload not found: \(payloadPath)")
         }
@@ -119,6 +119,21 @@ final class SlotManager: UpdateHost, @unchecked Sendable {
         guard trustRoot.isValidSignature(sig, for: Data(digest)) else {
             throw AdapterError("ESIGNATURE", "signature verification failed")
         }
+    }
+
+    // §8 full-update: verify a base installer against the trust root (§7.1) so the adapter only
+    // announces it installable (§153) once verified. The base installer is NOT unpacked into a slot;
+    // the OS-native replacement is out of contract scope.
+    func verifyBaseInstaller(payloadPath: String, hashHex: String, signatureB64: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        try verifyPayload(payloadPath: payloadPath, hashHex: hashHex, signatureB64: signatureB64)
+    }
+
+    func stageAppUpdate(payloadPath: String, hashHex: String, signatureB64: String, version: String) throws {
+        lock.lock(); defer { lock.unlock() }
+
+        // §7.1: verify BEFORE anything is placed under the app:// root.
+        try verifyPayload(payloadPath: payloadPath, hashHex: hashHex, signatureB64: signatureB64)
 
         // Verified: unpack the payload into the non-LIVE slot (§8). The target is the opposite of
         // the booted slot, never `current`: while a pending slot is booted-but-unconfirmed,

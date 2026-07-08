@@ -26,6 +26,10 @@ public:
     Json status();
     Json stageAppUpdate(const std::string& payloadPath, const std::string& hash,
                         const std::string& signature, const std::string& version);
+    // §8 full-update / §153: verify a base installer against the trust root (hash + signature) WITHOUT
+    // unpacking it into a slot, so the adapter only announces readyToInstall once it is verified.
+    Json verifyBaseInstaller(const std::string& payloadPath, const std::string& hash,
+                             const std::string& signature);
     void confirmBoot();
 
 private:
@@ -36,6 +40,8 @@ private:
 
     void initialize(const std::string& appSeedRoot, const std::string& initialVersion);
     bool verifySignature(const std::string& digest, const std::string& signatureB64);
+    // §7.1 hash + signature check shared by stageAppUpdate and verifyBaseInstaller (throws EHASH/ESIGNATURE).
+    void verifyPayload(const std::string& payloadPath, const std::string& hash, const std::string& signature);
 
     std::string slotDir(const std::string& s) const;
     std::string currentFile() const;

@@ -39,6 +39,19 @@ public final class UpdateAdapter: Adapter, @unchecked Sendable {
             try host.stageAppUpdate(payloadPath: path, hashHex: hash, signatureB64: sig, version: version)
             return .object(["staged": .bool(true)])
 
+        case "stageBaseUpdate":
+            guard let path = obj["payloadPath"]?.stringValue,
+                  let hash = obj["hash"]?.stringValue,
+                  let sig = obj["signature"]?.stringValue else {
+                throw AdapterError("EINVAL", "payloadPath, hash and signature required")
+            }
+            let version = obj["version"]?.stringValue ?? "0.0.0"
+            // §153: verify the base installer BEFORE announcing it installable. readyToInstall fires
+            // only on success (a bad signature throws ESIGNATURE and emits nothing).
+            try host.verifyBaseInstaller(payloadPath: path, hashHex: hash, signatureB64: sig)
+            emitter?.emit("update.readyToInstall", .object(["version": .string(version)]))
+            return .object(["staged": .bool(true)])
+
         case "evaluate":
             return evaluate(obj)
 
@@ -70,10 +83,8 @@ public final class UpdateAdapter: Adapter, @unchecked Sendable {
         let contractOK = contractRequired == contractProvided   // exact major.minor match for v1
         let capsOK = capsRequired.allSatisfy { capsProvided.contains($0) }
         let mode = (contractOK && capsOK) ? "app-update" : "full-update"
-
-        if mode == "full-update" {
-            emitter?.emit("update.readyToInstall", .object(["version": .string(version)]))
-        }
+        // Classification only (§153): readyToInstall is emitted by stageBaseUpdate after the base
+        // installer is verified, never here — at evaluate time nothing is verified yet.
         return .object(["mode": .string(mode), "version": .string(version)])
     }
 }
