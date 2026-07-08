@@ -214,6 +214,19 @@ function buildHandlers(ctx) {
       return { deferred: true };
     },
 
+    // tray (spec/commands/tray.md) — per-app; record + testability hooks (the mock has no OS status area)
+    'tray.set': async (a) => {
+      if (a && a.menu !== undefined && !Array.isArray(a.menu)) throw err('EINVAL', 'menu must be an array');
+      return null;
+    },
+    'tray.remove': async () => null,
+    'tray.__click': async () => { ctx.emitEvent('tray.clicked', null); return null; },
+    'tray.__menuClick': async (a) => {
+      if (!a || typeof a.id !== 'string') throw err('EINVAL', 'id required');
+      ctx.emitEvent('tray.menuClicked', { id: a.id });
+      return null;
+    },
+
     // shellOpen (spec/commands/shellOpen.md) — record-only (the mock has no OS to hand off to)
     'shellOpen.openExternal': async (a) => {
       if (!a || typeof a.url !== 'string' || !a.url) throw err('EINVAL', 'url required');

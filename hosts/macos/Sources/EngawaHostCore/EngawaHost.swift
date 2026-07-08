@@ -174,6 +174,7 @@ final class EngawaHost: NSObject {
         if declares("shellOpen") { router.register(ShellOpenAdapter(conformance: mode == "conformance")) }
         if declares("notification") { router.register(NotificationAdapter(conformance: mode == "conformance")) }
         if declares("process") { router.register(ProcessAdapter(manifest: manifest, emitter: emitter, conformance: mode == "conformance")) }
+        if declares("tray") { router.register(TrayAdapter(conformance: mode == "conformance")) }
         // The app's statically-composed adapters (e.g. sqlite) — only what this app declared (§3).
         for adapter in appAdapters { router.register(adapter) }
         capabilities = router.namespaces

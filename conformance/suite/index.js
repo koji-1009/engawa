@@ -18,6 +18,7 @@ require('./binaryio.test');
 require('./app.test');
 require('./clipboard.test');
 require('./window.test');
+require('./tray.test');
 require('./shellOpen.test');
 require('./notification.test');
 require('./process.test');
