@@ -54,8 +54,13 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .node-version
-      - name: make conformance
-        run: make conformance
+      # TEMPORARY: build the host once, then run the suite many times to surface the intermittent
+      # macOS host boot exit (code null) and capture its signal via the driver's exit log. Revert
+      # to `make conformance` once diagnosed.
+      - name: build macOS host
+        run: cd hosts/macos && swift build
+      - name: conformance x20 (hunt the intermittent boot exit)
+        run: for i in $(seq 1 20); do echo "--- run $i ---"; node conformance/run.js || exit 1; done
       - name: make notes
         run: make notes
 
