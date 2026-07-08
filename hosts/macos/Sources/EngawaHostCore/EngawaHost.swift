@@ -375,7 +375,15 @@ final class EngawaHost: NSObject {
         startStdinReader()
     }
 
-    private func startStdinReader() {
+    // nonisolated: the reader runs on its own background Thread. If this method stayed on the host's
+    // @MainActor isolation, the Thread closure would inherit @MainActor; under the older Swift in
+    // Xcode 16.x that inference plus the @preconcurrency-imported `Thread.init(block:)` injects a
+    // runtime `dispatch_assert_queue(main)` at the closure's entry, which then traps (SIGTRAP) on the
+    // background thread. (Newer Swift infers this closure non-isolated, so it can't be built that way
+    // at all — hence the crash only ever appeared on macos-15 runners.) The loop does only Sendable
+    // work (read/parse) and hops every command to the main actor via `Task { @MainActor }`, so making
+    // the reader nonisolated is both correct and toolchain-independent.
+    private nonisolated func startStdinReader() {
         let thread = Thread {
             while let raw = readLine(strippingNewline: true) {
                 let line = raw.trimmingCharacters(in: .whitespaces)
