@@ -156,8 +156,13 @@ final class EngawaHost: NSObject {
                                    contractVersion: Self.contractVersion,
                                    engineVersion: engineVersion,
                                    autotest: autotest))
-        // Per-app: composed only when declared. (First migrated namespace; fs/dialog/shellOpen/
-        // notification/process follow the same gate — see spec §3.1.)
+        // Mandatory core (§3.1): window (always). `update` is contract-coupled (§7.1/§8), also always.
+        windowController = WindowController(emitter: emitter, conformance: mode == "conformance")
+        router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
+        router.register(UpdateAdapter(host: slots, conformance: mode == "conformance"))
+
+        // Per-app namespaces (§3.1): composed only when the app declares them in engawa.json.
+        if declares("fs") { router.register(FsAdapter(ioTokens: ioTokens)) }
         if declares("clipboard") {
             // A private pasteboard under conformance so the suite never touches the user's clipboard.
             let pasteboard = mode == "conformance"
@@ -165,15 +170,10 @@ final class EngawaHost: NSObject {
                 : NSPasteboard.general
             router.register(ClipboardAdapter(pasteboard: pasteboard))
         }
-        // Still always-composed pending migration to the §3.1 gate:
-        router.register(FsAdapter(ioTokens: ioTokens))
-        windowController = WindowController(emitter: emitter, conformance: mode == "conformance")
-        router.register(WindowAdapter(controller: windowController, conformance: mode == "conformance"))
-        router.register(ShellOpenAdapter(conformance: mode == "conformance"))
-        router.register(NotificationAdapter(conformance: mode == "conformance"))
-        router.register(ProcessAdapter(manifest: manifest, emitter: emitter, conformance: mode == "conformance"))
-        router.register(DialogAdapter(conformance: mode == "conformance"))
-        router.register(UpdateAdapter(host: slots, conformance: mode == "conformance")) // contract-coupled (adapters/update), always present
+        if declares("dialog") { router.register(DialogAdapter(conformance: mode == "conformance")) }
+        if declares("shellOpen") { router.register(ShellOpenAdapter(conformance: mode == "conformance")) }
+        if declares("notification") { router.register(NotificationAdapter(conformance: mode == "conformance")) }
+        if declares("process") { router.register(ProcessAdapter(manifest: manifest, emitter: emitter, conformance: mode == "conformance")) }
         // The app's statically-composed adapters (e.g. sqlite) — only what this app declared (§3).
         for adapter in appAdapters { router.register(adapter) }
         capabilities = router.namespaces
