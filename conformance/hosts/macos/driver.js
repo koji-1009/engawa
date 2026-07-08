@@ -262,8 +262,8 @@ function connectMacosHost() {
   let nextReqId = 1;
   const pending = new Map();
   const eventHandlers = new Map();   // topic -> Set<handler>
-  let markReady;
-  const ready = new Promise((res) => { markReady = res; });
+  let markReady, failReady;
+  const ready = new Promise((res, rej) => { markReady = res; failReady = rej; });
 
   // StringDecoder buffers a multibyte UTF-8 sequence split across stdout chunks; a naive
   // chunk.toString('utf8') would corrupt it at the boundary (surfaced by the 1 MiB unicode test).
@@ -298,8 +298,11 @@ function connectMacosHost() {
     }
   });
 
-  child.on('exit', (code) => {
-    const err = new Error(`macOS host exited (code ${code})`);
+  child.on('exit', (code, signal) => {
+    // Log the SIGNAL, not just the code: `code null` means killed by a signal, and which one
+    // (SIGKILL=OOM/kill, SIGSEGV/SIGABRT=crash) is the whole diagnosis for the intermittent boot exit.
+    const err = new Error(`macOS host exited (code ${code}, signal ${signal})`);
+    failReady(err);                                  // unblock connect if it died before ready
     for (const p of pending.values()) p.reject(err);
     pending.clear();
   });

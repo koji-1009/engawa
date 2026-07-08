@@ -50,14 +50,18 @@
   });
 
   test('window.setSize emits a window.resize event with the new size', async function (engawa) {
+    // Establish a known frame first (the prior test minimizes/maximizes; those are async, so the
+    // live frame here is unknown). Only then is the asserted setSize a guaranteed *change* — a
+    // no-op setSize to the current size fires no windowDidResize and hence no window.resize event.
+    await engawa.invoke('window.setSize', { width: 800, height: 600 });
     var events = [];
     var off = engawa.on('window.resize', function (p) { events.push(p); });
-    await engawa.invoke('window.setSize', { width: 640, height: 480 });
+    await engawa.invoke('window.setSize', { width: 517, height: 389 });   // guaranteed != 800x600
     await waitFor(function () { return events.length > 0; }, 2000);
     off();
     var last = events[events.length - 1];
-    assertEqual(last.width, 640, 'resize width');
-    assertEqual(last.height, 480, 'resize height');
+    assertEqual(last.width, 517, 'resize width');
+    assertEqual(last.height, 389, 'resize height');
   });
 
   test('§2.1 window.resize is coalesced to the latest per delivery batch', async function (engawa) {
