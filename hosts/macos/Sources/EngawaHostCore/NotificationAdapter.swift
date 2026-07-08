@@ -1,10 +1,11 @@
 import Foundation
+import UserNotifications
 import EngawaKit
 
 // The `notification` namespace (spec/commands/notification.md). Under conformance it records
-// requests and exposes them via `notification.__recorded`. Real delivery needs a bundled app
-// with a notification entitlement (UNUserNotificationCenter), wired at the packaging stage;
-// until then app-mode delivery is a logged best-effort placeholder.
+// requests and exposes them via `notification.__recorded`. In app mode it delivers for real via
+// UNUserNotificationCenter (best-effort, matching the Windows/Linux hosts) — but only inside a
+// bundled, code-signed .app (a bare host has no bundle identifier and logs instead of trapping).
 final class NotificationAdapter: Adapter, @unchecked Sendable {
     let namespace = "notification"
     private let conformance: Bool
@@ -25,7 +26,7 @@ final class NotificationAdapter: Adapter, @unchecked Sendable {
             if conformance {
                 record(title: title, body: body)
             } else {
-                Out.err("notification.show: \(title) — \(body)  (delivery wired at packaging stage)")
+                deliver(title: title, body: body)
             }
             return .null
 
@@ -34,6 +35,26 @@ final class NotificationAdapter: Adapter, @unchecked Sendable {
 
         default:
             throw AdapterError("ENOSYS", "unknown command: notification.\(cmd)")
+        }
+    }
+
+    // Best-effort real delivery via UNUserNotificationCenter (matches the Windows/Linux hosts).
+    // UNUserNotificationCenter.current() traps outside a bundled, code-signed .app, so guard on the
+    // bundle identifier — a bare host (dev/`ENGAWA_APP_ROOT` runs) logs instead of crashing. Delivery
+    // is best-effort: a denied authorization is dropped silently, never surfaced as an error.
+    private func deliver(title: String, body: String) {
+        guard Bundle.main.bundleIdentifier != nil else {
+            Out.err("notification.show: \(title) — \(body)  (no .app bundle; real delivery needs a packaged app)")
+            return
+        }
+        // Fetch the center fresh inside the closure rather than capturing it — it is non-Sendable and
+        // the authorization completion is a @Sendable closure. `title`/`body` are Sendable Strings.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
     }
 
