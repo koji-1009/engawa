@@ -375,7 +375,12 @@ final class EngawaHost: NSObject {
         startStdinReader()
     }
 
-    private func startStdinReader() {
+    // nonisolated: the reader runs on its own background Thread. If this method stayed on the host's
+    // @MainActor isolation, the Thread closure would inherit @MainActor and its entry would assert
+    // `dispatch_assert_queue(main)` on the background thread — an intermittent SIGTRAP at boot. The
+    // loop only does Sendable work (read/parse) and hops every command to the main actor via
+    // `Task { @MainActor }`, so it must NOT itself be main-actor isolated.
+    private nonisolated func startStdinReader() {
         let thread = Thread {
             while let raw = readLine(strippingNewline: true) {
                 let line = raw.trimmingCharacters(in: .whitespaces)
